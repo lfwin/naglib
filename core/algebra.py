@@ -364,6 +364,30 @@ class PolynomialSystem(NAGobject):
             parameters = self._parameters
             homvar = self._homvar
             return PolynomialSystem(polynomials, variables, parameters, homvar)
+            
+    def as_coeff_matrix(self):
+        """
+        """
+        from functools import reduce
+        from sympy import Matrix, zeros
+        polynomials = [p.as_poly() for p in self._polynomials]
+        variables = self._variables
+        monomials = set()
+        for p in polynomials:
+            pmons = p.monoms()
+            for mon in pmons:
+                m = reduce(lambda x, y: x*y, map(lambda x, y: x**y, variables, mon))
+                monomials.add(m)
+                
+        monomials = Matrix(list(monomials)) # fixes an order
+        m = self.shape[0]
+        n = len(monomials)
+        coeffs = zeros(m, n)
+        for i in range(m):
+            for j in range(n):
+                coeffs[i,j] = polynomials[i].coeff_monomial(monomials[j])
+                
+        return coeffs, monomials
         
     def assign_parameters(self, params):
         """
