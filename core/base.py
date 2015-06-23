@@ -35,6 +35,7 @@ class Point(NAGobject):
         
         coordinates = [sympify(c) for c in coordinates]
         self._coordinates = Matrix(coordinates)
+        self._coordinates.simplify()
         
     def __add__(self, other):
         """
@@ -291,13 +292,6 @@ class AffinePoint(Point):
         coordinates = self._coordinates
         return coordinates.norm()
     
-    def homogenize(self):
-        """
-        """
-        homcoordinates = [1] + list(self._coordinates)
-        
-        return ProjectivePoint(homcoordinates)
-    
     def norm(self, ord=None):
         """
         Return the norm of AffinePoint
@@ -309,6 +303,14 @@ class AffinePoint(Point):
         """
         coordinates = self._coordinates
         return coordinates.norm(ord)
+        
+    def to_projective(self, homindex=0):
+        """
+        """
+        homcoordinates = list(self._coordinates)
+        homcoordinates.insert(homindex, 1)
+        
+        return ProjectivePoint(homcoordinates)
     
     @property
     def dim(self):
@@ -316,9 +318,13 @@ class AffinePoint(Point):
     
 class ProjectivePoint(Point):
     """
-    Point object living in affine space
+    Point object living in projective space
     """
-    def __init__(self, coordinates, tol=TOL*10):
+    def __init__(self, coordinates, homindex=0, tol=TOL*10):
+        lenc = len(coordinates)
+        if homindex not in range(lenc):
+            msg = "choose an index within range(0,{0}) for homindex".format(lenc)
+            raise ValueError(msg)
         super(ProjectivePoint, self).__init__(coordinates)
         
         if self.is_zero(tol):
@@ -327,6 +333,7 @@ class ProjectivePoint(Point):
             raise ExitSpaceError(msg)
         self._dim = len(self._coordinates) - 1
         self._tol = tol
+        self._homindex = homindex
         
     def __repr__(self):
         coordinates = [str(c.n()) for c in self._coordinates]
@@ -450,10 +457,13 @@ class ProjectivePoint(Point):
             raise ExitSpaceError(msg)
     
     def at_infinity(self, tol=TOL):
-        coordinates = self._coordinates
-        c0 = coordinates[0]
-        div_coord = [c0/c for c in coordinates[1:]]
-        return sum([abs(c)**2 for c in div_coord])**(0.5) < tol
+        from sympy import Abs, Matrix
+        coordinates = Matrix(map(Abs, self._coordinates))
+
+        mc = max(coordinates)
+        isz = coordinates[0]/mc
+
+        return isz < tol
     
     def canonical(self):
         """
@@ -472,8 +482,10 @@ class ProjectivePoint(Point):
         Return Affine Point, if not at at infinity
         """
         if not self.at_infinity():
+            homindex = self._homindex
             coordinates = self._coordinates
-            return AffinePoint([c/coordinates[0] for c in coordinates[1:]])
+            homcoord = coordinates.pop(homindex)
+            return AffinePoint([c/homcoord for c in coordinates])
         else:
             msg = "cannot create affine point from {0}; point is at infinity".format(self)
             raise AffineInfinityException(msg)
