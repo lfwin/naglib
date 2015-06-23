@@ -483,7 +483,7 @@ class ProjectivePoint(Point):
         """
         if not self.at_infinity():
             homindex = self._homindex
-            coordinates = self._coordinates
+            coordinates = list(self._coordinates)
             homcoord = coordinates.pop(homindex)
             return AffinePoint([c/homcoord for c in coordinates])
         else:
