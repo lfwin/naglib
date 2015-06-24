@@ -370,7 +370,7 @@ class PolynomialSystem(NAGobject):
         """
         from functools import reduce
         from sympy import Matrix, zeros
-        polynomials = [p.as_poly() for p in self._polynomials]
+        polynomials = [p.as_poly(domain='CC') for p in self._polynomials]
         variables = self._variables
         monomials = set()
         for p in polynomials:
