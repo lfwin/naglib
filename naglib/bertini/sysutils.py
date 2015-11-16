@@ -3,7 +3,7 @@ from __future__ import print_function
 from subprocess import check_output, CalledProcessError
 
 from naglib.startup import TOL, TEMPDIR as basedir
-from naglib.core.base import NAGobject
+from naglib.core.base import NAGObject
 from naglib.exceptions import BertiniError, NoBertiniException
 
 def __os():
@@ -70,7 +70,7 @@ BERTINI = __has_bertini()
 MPIRUN  = __has_mpi()
 PCOUNT  = __proc_count()
 
-class BertiniRun(NAGobject):
+class BertiniRun(NAGObject):
     TEVALP    = -4
     TEVALPJ   = -3
     TNEWTP    = -2

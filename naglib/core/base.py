@@ -1,3 +1,7 @@
+"""
+Base class for NAGlib objects
+"""
+from __future__ import division, print_function
 from sympy import I, Float, Rational, ShapeError, sympify, Matrix
 
 from naglib.exceptions import ExitSpaceError, AffineInfinityException
@@ -10,7 +14,7 @@ def scalar_num(x):
     from sympy import Number
     x = sympify(str(x))
     re, im = x.as_real_imag()
-    
+
     return isinstance(re, Number) and isinstance(im, Number)
 
 class NAGobject(object):
@@ -23,7 +27,7 @@ class Point(NAGobject):
     """
     A point in affine or projective space
     """
-    
+
     def __init__(self, coordinates):
         """
         Initialize the Point object
@@ -32,11 +36,11 @@ class Point(NAGobject):
             coordinates = list(coordinates)
         except TypeError:
             coordinates = [coordinates]
-        
+
         coordinates = [sympify(c) for c in coordinates]
         self._coordinates = Matrix(coordinates)
         self._coordinates.simplify()
-        
+
     def __add__(self, other):
         """
         x.__add__(y) <==> x + y
@@ -46,16 +50,16 @@ class Point(NAGobject):
             t = type(other)
             msg = "unsupported operand type(s) for +: '{0}' and '{1}'".format(cls, t)
             raise TypeError(msg)
-        
+
         sco = self._coordinates
         oco = other._coordinates
-        
+
         if len(sco) != len(oco):
             msg = "dimension mismatch"
             raise ShapeError(msg)
-        
+
         return cls(list(sco + oco))
-    
+
     def __sub__(self, other):
         """
         x.__sub__(y) <==> x - y
@@ -65,9 +69,9 @@ class Point(NAGobject):
             t = type(other)
             msg = "unsupported operand type(s) for -: '{0}' and '{1}'".format(cls, t)
             raise TypeError(msg)
-        
+
         return self + -other
-    
+
     def __neg__(self):
         """
         x.__neg__() <==> -x
@@ -75,7 +79,7 @@ class Point(NAGobject):
         cls = self.__class__
         coordinates  = self._coordinates
         return cls(list(-coordinates))
-    
+
     def __mul__(self, other):
         """
         x.__mul__(y) <==> x*y
@@ -88,7 +92,7 @@ class Point(NAGobject):
         else:
             coordinates = self._coordinates
             return cls(other * coordinates)
-        
+
     def __rmul__(self, other):
         """
         x.__rmul__(y) <==> y*x
@@ -100,13 +104,13 @@ class Point(NAGobject):
             raise TypeError(msg)
         else:
             return self * other
-        
+
     def __div__(self, other):
         """
         x.__div__(y) <==> x/y
         """
         return self.__truediv__(other)
-            
+
     def __truediv__(self, other):
         """
         x.__truediv__(y) <==> x/y
@@ -122,7 +126,7 @@ class Point(NAGobject):
                 raise ZeroDivisionError(msg)
             coordinates = self._coordinates
             return cls((1.0/other) * coordinates)
-        
+
     def __eq__(self, other):
         """
         x.__eq__(y) <==> x == y
@@ -130,26 +134,26 @@ class Point(NAGobject):
         cls = self.__class__
         if not isinstance(other, cls):
             return False
-        
+
         sco = self._coordinates
         oco = other._coordinates
-        
+
         return (sco == oco)
-    
+
     def __len__(self):
         """
         x.__len__() <==> len(x)
         """
         coordinates = self._coordinates
         return len(coordinates)
-    
+
     def __getitem__(self, key):
         """
         x.__getitem__(y) <==> x[y]
         """
         coordinates = self._coordinates
         return coordinates[key]
-    
+
     def __setitem__(self, key, value):
         """
         x.__setitem__(y, z) <==> x[y] = z
@@ -157,26 +161,26 @@ class Point(NAGobject):
         if not scalar_num(value):
             msg = "must assign a number"
             raise TypeError(msg)
-        
+
         coordinates = self._coordinates
         coordinates[key] = sympify(value)
-        
+
     def __setslice__(self, i, j, sequence):
         """
         x.__setslice__(i,j,sequence) <==> x[i:j] = sequence
         """
         coordinates = self._coordinates
-        
+
         sequence = sympify(list(sequence))
         for s in sequence:
             if not scalar_num(s):
                 msg = "must assign a number"
                 raise TypeError(msg)
-                
+
         cocopy = coordinates[:]
         cocopy[i:j] = sequence
         self._coordinates = Matrix(cocopy)
-        
+
     def cat(self, other):
         """
         concatenate other onto self
@@ -188,9 +192,9 @@ class Point(NAGobject):
             raise TypeError(msg)
         scoords = list(self._coordinates)
         ocoords = list(other._coordinates)
-        
+
         return cls(scoords + ocoords)
-        
+
     def float(self, prec=None):
         cls = self.__class__
         coordinates = self._coordinates
@@ -204,7 +208,7 @@ class Point(NAGobject):
                 real = Float(real)
                 imag = Float(imag)
             newcoords.append(real + I*imag)
-            
+
         return cls(newcoords)
 
     def insert(self, index, item):
@@ -214,24 +218,24 @@ class Point(NAGobject):
         coordinates = list(self._coordinates)
         coordinates.insert(index, item)
         self._coordinates = Matrix(coordinates)
-    
+
     def is_zero(self, tol=TOL*10):
         coordinates = self._coordinates
         summa = sum([abs(c)**2 for c in coordinates])**0.5
         return summa < tol
-    
+
     def normalized(self):
         """
         Returns the normalized version of ``self''
         """
         coordinates = self._coordinates
         return self.__class__(coordinates.normalized())
-    
+
     def pop(self, index=-1):
         coordinates = list(self._coordinates)
         popped = coordinates.pop(index)
         self._coordinates = Matrix(coordinates)
-        
+
         return popped
 
     def rational(self):
@@ -246,26 +250,26 @@ class Point(NAGobject):
             real = Rational(real)
             imag = Rational(imag)
             newcoords.append(real + I*imag)
-            
+
         return cls(newcoords)
-        
+
     @property
     def coordinates(self):
         return self._coordinates
-    
+
     @property
     def is_real(self):
         coordinates = self._coordinates
         real = [c.is_real for c in coordinates]
         return all(real)
-    
+
 class AffinePoint(Point):
     """
     Point object living in affine space
     """
     def __init__(self, coordinates):
         super(AffinePoint, self).__init__(coordinates)
-        
+
     def __repr__(self):
         coordinates = [str(c.n()) for c in self._coordinates]
         repstr = 'AffinePoint(['
@@ -273,16 +277,16 @@ class AffinePoint(Point):
             repstr += ', '.join(coordinates[:3] + ['...'] + coordinates[-3:]) + '])'
         else:
             repstr = 'AffinePoint({0})'.format(', '.join(coordinates))
-        
+
         return repstr
-    
+
     def __str__(self):
         """
         x.__str__ <==> str(x)
         """
         coordinates = self._coordinates
         repstr = '[' + ', '.join([str(c) for c in coordinates]) + ']'
-        
+
         return repstr
 
     def __abs__(self):
@@ -291,7 +295,7 @@ class AffinePoint(Point):
         """
         coordinates = self._coordinates
         return coordinates.norm()
-    
+
     def norm(self, ord=None):
         """
         Return the norm of AffinePoint
@@ -303,19 +307,19 @@ class AffinePoint(Point):
         """
         coordinates = self._coordinates
         return coordinates.norm(ord)
-        
+
     def to_projective(self, homindex=0):
         """
         """
         homcoordinates = list(self._coordinates)
         homcoordinates.insert(homindex, 1)
-        
+
         return ProjectivePoint(homcoordinates)
-    
+
     @property
     def dim(self):
         return len(self._coordinates)
-    
+
 class ProjectivePoint(Point):
     """
     Point object living in projective space
@@ -326,7 +330,7 @@ class ProjectivePoint(Point):
             msg = "choose an index within range(0,{0}) for homindex".format(lenc)
             raise ValueError(msg)
         super(ProjectivePoint, self).__init__(coordinates)
-        
+
         if self.is_zero(tol):
             corstr = '[' + ' : '.join([str(c) for c in self._coordinates]) + ']'
             msg = "{0} is not in projective space".format(corstr)
@@ -334,7 +338,7 @@ class ProjectivePoint(Point):
         self._dim = len(self._coordinates) - 1
         self._tol = tol
         self._homindex = homindex
-        
+
     def __repr__(self):
         coordinates = [str(c.n()) for c in self._coordinates]
         repstr = 'ProjectivePoint(['
@@ -342,18 +346,18 @@ class ProjectivePoint(Point):
             repstr += ', '.join(coordinates[:3] + ['...'] + coordinates[-3:]) + '])'
         else:
             repstr = 'ProjectivePoint({0})'.format(', '.join(coordinates))
-        
+
         return repstr
-    
+
     def __str__(self):
         """
         x.__str__ <==> str(x)
         """
         coordinates = self._coordinates
         repstr = '[' + ' : '.join([str(c) for c in coordinates]) + ']'
-        
+
         return repstr
-    
+
     def __add__(self, other):
         """
         x.__add__(y) <==> x + y
@@ -362,9 +366,9 @@ class ProjectivePoint(Point):
         if res.is_zero(self._tol):
             msg = 'you have left projective space'
             raise ExitSpaceError(msg)
-        
+
         return res
-    
+
     def __sub__(self, other):
         """
         x.__sub__(y) <==> x - y
@@ -373,9 +377,9 @@ class ProjectivePoint(Point):
         if res.is_zero(self._tol):
             msg = 'you have left projective space'
             raise ExitSpaceError(msg)
-        
+
         return res
-    
+
     def __mul__(self, other):
         """
         x.__mul__(y) <==> x*y
@@ -384,9 +388,9 @@ class ProjectivePoint(Point):
         if res.is_zero(self._tol):
             msg = 'you have left projective space'
             raise ExitSpaceError(msg)
-        
+
         return res
-        
+
     def __rmul__(self, other):
         """
         x.__rmul__(y) <==> y*x
@@ -395,7 +399,7 @@ class ProjectivePoint(Point):
         if res.is_zero(self._tol):
             msg = 'you have left projective space'
             raise ExitSpaceError(msg)
-        
+
     def __div__(self, other):
         """
         x.__div__(y) <==> x/y
@@ -404,9 +408,9 @@ class ProjectivePoint(Point):
         if res.is_zero(self._tol):
             msg = 'you have left projective space'
             raise ExitSpaceError(msg)
-        
+
         return res
-    
+
     def __truediv__(self, other):
         """
         x.__truediv__(y) <==> x/y
@@ -415,25 +419,25 @@ class ProjectivePoint(Point):
         if res.is_zero(self._tol):
             msg = 'you have left projective space'
             raise ExitSpaceError(msg)
-        
+
         return res
-    
+
     def __eq__(self, other):
         """
         x.__eq__(u=y) <==> x == y
         """
         if not isinstance(other, ProjectivePoint):
             return False
-        
+
         # (x0, ..., xn) ==  (y0, ..., yn) if there exists c s.t.
         # (x0, ..., xn) == c(y0, ..., yn)
         sho = self.canonical()
         oho = other.canonical()
         sco = sho._coordinates
         oco = oho._coordinates
-        
+
         return sco == oco
-        
+
     def __setitem__(self, key, value):
         """
         x.__setitem__(y, z) <==> x[y] = z
@@ -444,7 +448,7 @@ class ProjectivePoint(Point):
             self._coordinates = coordinates
             msg = 'you have left projective space'
             raise ExitSpaceError(msg)
-    
+
     def __setslice__(self, i, j, sequence):
         """
         x.__setitem__(y, z) <==> x[y] = z
@@ -455,7 +459,7 @@ class ProjectivePoint(Point):
             self._coordinates = coordinates
             msg = 'you have left projective space'
             raise ExitSpaceError(msg)
-    
+
     def at_infinity(self, tol=TOL):
         from sympy import Abs, Matrix
         coordinates = Matrix(map(Abs, self._coordinates))
@@ -464,7 +468,7 @@ class ProjectivePoint(Point):
         isz = coordinates[0]/mc
 
         return isz < tol
-    
+
     def canonical(self):
         """
         Return ProjectivePoint with coordinates rescaled
@@ -474,9 +478,9 @@ class ProjectivePoint(Point):
         while abs(coordinates[nz]) < TOL and nz < len(coordinates):
             nz += 1
         c1 = coordinates[nz]
-        
+
         return ProjectivePoint(coordinates/c1)
-    
+
     def dehomogenize(self):
         """
         Return Affine Point, if not at at infinity
@@ -489,7 +493,7 @@ class ProjectivePoint(Point):
         else:
             msg = "cannot create affine point from {0}; point is at infinity".format(self)
             raise AffineInfinityException(msg)
-    
+
     @property
     def dim(self):
         return len(self._coordinates)-1

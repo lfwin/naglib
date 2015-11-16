@@ -2,9 +2,9 @@ from sympy import I, Matrix as spmatrix, sympify, zeros
 
 from naglib.startup import TOL
 from naglib.exceptions import BertiniError, NonPolynomialException, NonHomogeneousException
-from naglib.core.base import NAGobject, scalar_num, Point, AffinePoint
+from naglib.core.base import NAGObject, scalar_num, Point, AffinePoint
         
-class PolynomialSystem(NAGobject):
+class PolynomialSystem(NAGObject):
     """
     A polynomial system
     """
@@ -780,7 +780,7 @@ class PolynomialSystem(NAGobject):
         n = len(self._variables)
         return (m,n)
     
-class LinearSlice(NAGobject):
+class LinearSlice(NAGObject):
     """
     A linear system
     
