@@ -16,8 +16,8 @@ elif major == 3:
 try:
     import sympy
 except ImportError:
-    msg = ("NAGlib depends on the external library SymPy. "
-           "See http://docs.sympy.org/latest/install.html for installation.")
+    msg = ("NAGlib depends on the SymPy library. "
+           "See http://docs.sympy.org/latest/install.html for details.")
     raise ImportError(msg)
 
 # now check whether we have at least the minimal version of SymPy
@@ -28,3 +28,12 @@ if major == 0 and minor == 7 and release < 6:
 del sympy, release
 
 del sys, major, minor
+
+# check whether we have six
+try:
+    import six
+except ImportError:
+    msg = ("NAGlib depends on the Python compatibility library `six'. "
+           "See https://pypi.python.org/pypi/six for details.")
+    raise ImportError(msg)
+del six

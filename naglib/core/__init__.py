@@ -1,8 +1,8 @@
-"""
-Core module for NAGlib
-"""
+"""Core module for NAGlib"""
 
-from sympy import Number, Float, Rational, Integer, pi, E, I, nan, oo, zoo
+from .base import NAGObject
+from .numbers import (Numeric, Integer, GaussianInteger, Rational,
+                      GaussianRational, Float, Complex)
 
 # from .algebra import PolynomialSystem
 # from .base import AffinePoint, ProjectivePoint
