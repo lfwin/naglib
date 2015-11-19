@@ -5,152 +5,96 @@ Numbers are actually represented in NAGlib as arrays of numbers.
 
 from __future__ import division, print_function
 
+import gmpy2
 import re
 
 from .base import NAGObject
 from .core import string_types
-from sympy import sympify, Integer, Rational, Float, I
-
-is_int      = re.compile(r"^[-+]?\d+$")
-is_rational = re.compile(r"^[-+]?\d+/\d+$")
-is_float    = re.compile(r"^[-+]?\d*\.?\d+([eE][-+]?\d+)?$")
-
-is_imag_int      = re.compile(r"^[-+]?([iI](\s*\*?\s*\d+)?|\d+(j|\s*\*?\s*[iI]))$")
-is_imag_rational = re.compile(r"^[-+]?([iI](\s*\*?\s*\d+)?/\d+|\d+(j|\s*\*?\s*[iI])/\d+)$")
-is_imag_float    = re.compile(r"^[-+]?([iI]\s*\*?\s*\d+\.?\d+([eE][-+]?\d+)?|\d*\.?\d+([eE][-+]?\d+)?(j|\s*\*?\s*[iI]))$")
-
-def is_gaussian_int(val):
-    # use positive lookbehind so we don't accidentally capture [+-] at The
-    # beginning of a string
-    # TODO: this doesn't capture the case where the imaginary part comes first!
-    breakup = re.split(r"(?<=\d)\s*[-+]\s*", val)
-    if len(breakup) != 2:
-        return False
-    else:
-        a,b = breakup
-        if (is_int.match(a) and is_imag_int.match(b)) or (is_imag_int.match(a) and is_int.match(b)):
-            return True
-        else:
-            return False
-
-def is_gaussian_rational(val):
-    # use positive lookbehind so we don't accidentally capture [+-] at The
-    # beginning of a string
-    # TODO: this doesn't capture the case where the imaginary part comes first!
-    breakup = re.split(r"(?<=\d)\s*[-+]\s*", val)
-    if len(breakup) != 2:
-        return False
-    else:
-        a,b = breakup
-        if (is_rational.match(a) and is_imag_rational.match(b)) \
-            or (is_imag_rational.match(a) and is_rational.match(b)) \
-            or (is_int.match(a) and is_imag_rational.match(b)) \
-            or (is_rational.match(a) and is_imag_int.match(b)) \
-            or (is_imag_int.match(a) and is_rational.match(b)) \
-            or (is_imag_rational.match(a) and is_int.match(b)):
-            return True
-        else:
-            return False
-
-def is_gaussian_float(val):
-    # use positive lookbehind so we don't accidentally capture [+-] at The
-    # beginning of a string
-    # TODO: this doesn't capture the case where the imaginary part comes first!
-    breakup = re.split(r"(?<=\d)\s*[-+]\s*", val)
-    if len(breakup) != 2:
-        return False
-    else:
-        a,b = breakup
-        if (is_float.match(a) and is_imag_float.match(b)) \
-            or (is_imag_float.match(a) and is_float.match(b)) \
-            or (is_int.match(a) and is_imag_float.match(b)) \
-            or (is_float.match(a) and is_imag_int.match(b)) \
-            or (is_imag_int.match(a) and is_float.match(b)) \
-            or (is_imag_float.match(a) and is_int.match(b)):
-            return True
-        else:
-            return False
-
-def get_numeric_type(vals):
-    vals = [re.sub(r"^\(|\)$", "", str(val)) for val in vals]
-
-    # keyword k is a member of class assumptions[k], i.e., a gaussian int is not a vanilla int
-    assumptions = {"int": ("int", "gaussian int", "rational", "gaussian rational", "float", "gaussian float"),
-                   "gaussian int": ("gaussian int", "gaussian rational"),
-                   "rational": ("rational", "gaussian rational"),
-                   "gaussian rational": ("gaussian rational"),
-                   "float": ("float", "gaussian float"),
-                   "gaussian float": ("gaussian float")}
-
-    possibles = set(("int", "gaussian int", "rational", "gaussian rational",
-                     "float", "gaussian float"))
-    for val in vals:
-        if is_int.match(val):
-            pass
-        elif is_imag_int.match(val) or is_gaussian_int(val):
-            possibles.difference_update(set(("int", "rational", "float")))
-        elif is_rational.match(val):
-            possibles.difference_update(set(("int", "gaussian int", "float")))
-        elif is_imag_rational.match(val) or is_gaussian_rational(val):
-            possibles.difference_update(set(("int", "gaussian int", "rational", "float", "gaussian float")))
-        elif is_float.match(val):
-            possibles.difference_update(set(("int", "gaussian int","rational", "gaussian rational")))
-        elif is_imag_float.match(val) or is_gaussian_float(val):
-            possibles.difference_update(set(("int", "gaussian int", "rational", "gaussian rational", "float")))
-        else:
-            print("{0} is not a number".format(val)) # DEBUG
-            return None
-
-        print("{0}".format(val)) # DEBUG
-        if not possibles:
-            print("last possibility eliminated with".format(val)) # DEBUG
-            return None
-
-    for possibility in ("int", "gaussian int", "rational", "gaussian rational",
-                        "float", "gaussian float"):
-        if possibility in possibles:
-            return possibility # lowest one
+from .tonumeric import gmpy2ify
+#from sympy import sympify, Integer, Rational, Float, I
 
 class Numeric(NAGObject):
     """Base class for numeric types"""
 
     def __init__(self, *args):
         super(Numeric, self).__init__(*args)
+        self._is_number = True
+        self._is_scalar = len(*args) == 1
 
-        self._prec = -1
-        if len(args) == 1:
-            args = args[0]
-
-            if isinstance(args, tuple) or isinstance(args, list):
-                args = [str(arg) for arg in args]
-                numeric_type = get_numeric_type(args)
-                if numeric_type:
-                    self._type = numeric_type
-                    self._entries = [sympify(arg) for arg in args] # TODO: use gmpy or mpmath if available
-                else:
-                    msg = ("expected iterable of strings of similar type "
-                           "but got incompatible types")
-                    raise ValueError(msg)
-            else:
-                value_type = type(args)
-                if value_type not in (int, long, float, complex, str):
-                    msg = ("expected str|int|long|float|complex object but got "
-                           "{0} instead".format(value_type))
-                    raise TypeError(msg)
-
-            self._is_number = True
-            if len(self._entries) == 1:
-                self._is_scalar = True
-            else:
-                self._is_scalar = False
+    def __repr__(self):
+        """x.__repr__() <==> repr(x)"""
+        entries = self._entries
+        if self._is_scalar:
+            return str(entries[0])
         else:
-            pass
+            # TODO: truncate this if the string is too long
+            return "({0})".format(", ".join([str(e) for e in entries]))
 
 class Complex(Numeric):
     """Complex floating-point vector type"""
 
     def __init__(self, *args):
         super(Complex, self).__init__(*args)
+
+        self._real = {} # sparsity
+        self._imag = {}
+
+        if self._numeric_type == "rational":
+            from fractions import Fraction
+            args = [Fraction(a) for a in self._args]
+            nums = [mpmath.mpf(a.numerator) for a in args]
+            denoms = [mpmath.mpf(a.denominator) for a in args]
+            try:
+                self._args = [nums[i]/denoms[i] for i in range(len(args))]
+            except ZeroDivisionError:
+                msg = "division by zero"
+                raise ZeroDivisionError(msg)
+            for i in range(self._length):
+                if self._args[i] != 0:
+                    self._real[i] = self._args[i]
+
+        elif self._numeric_type == "Gaussian rational":
+            pass
+
+        #print("args: {0}".format(self._args))
+        for i in range(self._length):
+            arg = self._args[i]
+            #print("arg: {0}".format(arg))
+            val = re.sub(r' ', '', arg)
+            breakup = re.split(r"(?<=[iI\d])([-+])", val)
+            if len(breakup) == 1: # pure real or pure imag
+                if 'i' in val or 'I' in val or 'j' in val:
+                    val = re.sub(r"[ijI]", '', val)
+                    if val == '':
+                        val = '1'
+                    elif val == '-':
+                        val = "-1"
+                    val = long(val)
+                    if val != 0:
+                        self._imag[i] = val
+                else:
+                    val = long(val)
+                    if val != 0:
+                        self._real[i] = long(val)
+            elif len(breakup) != 3:
+                raise ValueError(arg)
+            else:
+                left, right = breakup[0], breakup[1] + breakup[2]
+                if 'i' in left or 'I' in left:
+                    imag = re.sub(r"([iI]|\*)", '', left)
+                    real = right
+                else:
+                    imag = re.sub(r"([iIj]|\*)", '', right)
+                    if imag == '-':
+                        imag = '-1'
+                    elif imag == '+':
+                        imag = '1'
+                    real = left
+                real, imag = long(real), long(imag)
+                if real != 0:
+                    self._real[i] = real
+                if imag != 0:
+                    self._imag[i] = imag
 
 class Float(Complex):
     """Floating-point vector type"""
@@ -181,3 +125,54 @@ class GaussianInteger(GaussianRational):
 
     def __init__(self, *args):
         super(GaussianInteger, self).__init__(*args)
+
+        try:
+            self._real, self._imag = gmpy2ify(*args, force_type="Gaussian int")
+        except TypeError:
+            raise
+        except ValueError:
+            raise
+        self._length = len(*args)
+        #print("args: {0}".format(self._args))
+
+    def __repr__(self):
+        """x.__repr__() <==> repr(x)"""
+        if self._is_scalar:
+            if self._real:
+                rep = str(self._real[0])
+            else:
+                rep = ''
+            if self._imag:
+                if rep and self._imag[0] > 0:
+                    rep += '+' + str(self._imag[0]) + "*I"
+                else:
+                    rep += str(self._imag[0]) + "*I"
+            if not rep: # zero
+                return '0'
+        else:
+            reals = self._real.keys()
+            imags = self._imag.keys()
+            entries = []
+            for i in range(self._length):
+                entry = ''
+                if i in reals:
+                    entry += str(self._real[i])
+                if i in imags:
+                    if entry and self._imag[i] == 1:
+                        entry += "+I"
+                    elif entry and self._imag[i] == -1:
+                        entry += "-I"
+                    elif entry and self._imag[i] > 1:
+                        entry += '+' + str(self._imag[i]) + "*I"
+                    elif not entry and self._imag[i] == 1:
+                        entry += 'I'
+                    elif not entry and self._imag[i] == -1:
+                        entry += "-I"
+                    else:
+                        entry += str(self._imag[i]) + "*I"
+                if entry:
+                    entries.append(entry)
+                else:
+                    entries.append('0')
+            rep = '(' + ", ".join(entries) + ')'
+        return rep
