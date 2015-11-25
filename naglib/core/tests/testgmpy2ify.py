@@ -1,10 +1,10 @@
-"""Test whether gmp2ify correctly converts varying arguments"""
+"""Test whether gmpy2ify correctly converts varying arguments"""
 
 from __future__ import print_function
 
 import sys
-sys.path.insert(0, "..")
-from tonumeric import gmpy2ify
+sys.path.insert(0, "../../..")
+from naglib.core.tonumeric import gmpy2ify
 
 import gmpy2
 import unittest
@@ -158,7 +158,7 @@ class TestSingleton(unittest.TestCase):
         from_lit = gmpy2ify([lit])
         from_str = gmpy2ify([str1])
         self.assertEqual(from_lit, from_str)
-        self.assertEqual(from_lit[0][0], 3.14159)
+        self.assertAlmostEqual(from_lit[0][0], 3.14159)
         self.assertEqual(from_lit[1], {})
 
     def test_complex_construction(self):
@@ -198,7 +198,7 @@ class TestSingleton(unittest.TestCase):
         self.assertEqual(from_str4, from_str6)
         self.assertEqual(from_str6, from_str1)
         self.assertEqual(from_str1[0], {})
-        self.assertEqual(from_str1[1][0], 3.14159)
+        self.assertAlmostEqual(from_str1[1][0], 3.14159)
 
         self.assertEqual(from_str7, from_str8)
         self.assertEqual(from_str8, from_str9)

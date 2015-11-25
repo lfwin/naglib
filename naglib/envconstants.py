@@ -3,6 +3,8 @@
 tol = 1e-15
 # set default dps for arbitrary-precision fp numbers
 dps = 50
+# set default maximum length of numerical reprs
+replen = 5
 
 # are we debugging or not?
 # code modified from sympy/__init__.py

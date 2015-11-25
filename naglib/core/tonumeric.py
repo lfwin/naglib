@@ -81,53 +81,52 @@ def get_numeric_type(vals, all_possibilities=False):
     * A float can be promoted to a complex float.
     * The complex float is the apex data type and cannot be promoted.
     """
-    INT      = 0
-    GAUSSINT = 1
-    RATIONAL = 2
-    GAUSSRAT = 3
-    FLOAT    = 4
-    COMPLEX  = 5
+    from functools import reduce
 
-    # keyword k cannot be promoted to anything in impossibles[k]
-    impossibles = {GAUSSINT: set(["int", "rational", "float"]),
-                   RATIONAL: set(["int", "Gaussian int"]),
-                   GAUSSRAT: set(["int", "Gaussian int", "rational", "float"]),
-                      FLOAT: set(["int", "Gaussian int", "rational",
-                                  "Gaussian rational"]),
-                    COMPLEX: set(["int", "Gaussian int", "rational",
-                                  "Gaussian rational", "float"])
-                    }
+    pmap = {"Complex":1,
+            "Float":2,
+            "GaussianRational":3,
+            "Rational":6,
+            "GaussianInteger":9,
+            "Integer":18}
+    pinv = dict([(pmap[k], k) for k in pmap.keys()])
 
-    possibles = set(["int", "Gaussian int", "rational", "Gaussian rational",
-                     "float", "complex"])
+    def gnt_promotion_map(left, right):
+        from fractions import gcd
+        ltype = pmap[left]
+        rtype = pmap[right]
+        return pinv[gcd(ltype, rtype)]
+
+    datatypes = ["Integer", "GaussianInteger", "Rational", "GaussianRational",
+                 "Float", "Complex"]
+    dtlist = []
+
     for val in vals:
         if is_int.match(val):
-            pass
+            dtlist.append("Integer")
         elif is_imag_int.match(val) or is_gaussian_int(val):
-            # remove these possibilities, &c.
-            possibles.difference_update(impossibles[GAUSSINT])
+            dtlist.append("GaussianInteger")
         elif is_rational.match(val):
-            possibles.difference_update(impossibles[RATIONAL])
+            dtlist.append("Rational")
         elif is_imag_rational.match(val) or is_gaussian_rational(val):
-            possibles.difference_update(impossibles[GAUSSRAT    ])
+            dtlist.append("GaussianRational")
         elif is_float.match(val):
-            possibles.difference_update(impossibles[FLOAT])
+            dtlist.append("Float")
         elif is_imag_float.match(val) or is_complex(val):
-            possibles.difference_update(impossibles[COMPLEX])
+            dtlist.append("Complex")
         else:
             print("{0} is not a number".format(val)) # DEBUGGING
-            return "malformed"
-
-        if not possibles:
-            print("last possibility eliminated with".format(val)) # DEBUGGING
             return None
 
+    try:
+        min_possibility = reduce(gnt_promotion_map, dtlist)
+    except TypeError: # dtlist is empty
+        min_possibility = "Integer"
     if all_possibilities:
-        return possibles
-    for possibility in ("int", "Gaussian int", "rational", "Gaussian rational",
-                        "float", "complex"):
-        if possibility in possibles:
-            return possibility # lowest possibility
+        possibilities = [pinv[k] for k in pinv.keys() if pmap[min_possibility] % k == 0]
+        return possibilities
+    else:
+        return min_possibility
 
 def gmpy2ify(vals, force_type=None, use_precision=None):
     """
@@ -136,20 +135,22 @@ def gmpy2ify(vals, force_type=None, use_precision=None):
     Optional arguments
     ==================
     force_type: require the given type, from among:
-                "int", "Gaussian int", "rational",
-                "Gaussian rational", "float", "complex"
-    use_precision: require the given precision (defaults to adaptive)
+                "Integer", "GaussianInteger", "Rational",
+                "GaussianRational", "Float", "Complex"
+    use_precision: require the given precision (defaults to adaptive).
+                   This argument will be ignored unless used with Float or
+                   Complex types.
     """
 
     if force_type:
         if type(force_type) not in string_types:
             msg = "force_type requires a string argument"
             raise TypeError(msg)
-        if force_type not in ("int", "Gaussian int", "rational",
-                              "Gaussian rational", "float", "complex"):
+        if force_type not in ("Integer", "GaussianInteger", "Rational",
+                              "GaussianRational", "Float", "Complex"):
             msg = ("force_type requires one of the following arguments: "
-                    '"int", "Gaussian int", "rational", "Gaussian rational", '
-                    '"float", "complex"')
+                    '"Integer", "GaussianInteger", "Rational", '
+                    '"GaussianRational", "Float", "Complex"')
             raise ValueError(msg)
 
     if type(vals) not in (tuple, list):
@@ -172,20 +173,17 @@ def gmpy2ify(vals, force_type=None, use_precision=None):
     rdict = {}
     idict = {}
 
-    if numeric_type == "malformed":
+    if numeric_type is None:
         msg = "can't make sense of input"
         raise ValueError(msg)
-    elif numeric_type is None:
-        msg = "no common numerical type"
-        raise ValueError(msg)
 
-    if numeric_type == "int":
+    if numeric_type == "Integer":
         for i in range(shape):
             val = gmpy2.mpz(vals[i])
             if val != 0:
                 rdict[i] = val
         return rdict, idict
-    elif numeric_type == "Gaussian int":
+    elif numeric_type == "GaussianInteger":
         for i in range(shape):
             val = re.sub(r'\s', '', vals[i]) # remove whitespace
             breakup = re.split(r"(?<=[iI\d])([-+])", val)
@@ -226,21 +224,23 @@ def gmpy2ify(vals, force_type=None, use_precision=None):
                 if imag != 0:
                     idict[i] = imag
         return rdict, idict
-    elif numeric_type == "rational":
+    elif numeric_type == "Rational":
         for i in range(shape):
             val = gmpy2.mpq(vals[i])
             if val != 0:
                 rdict[i] = val
         return rdict, idict
-    elif numeric_type == "Gaussian rational":
+    elif numeric_type == "GaussianRational":
         for i in range(shape):
             val = re.sub(r'\s', '', vals[i]) # remove whitespace
             breakup = re.split(r"(?<=[iI\d])([-+])", val)
             if len(breakup) == 1: # pure real or pure imag
                 if 'i' in val or 'I' in val or 'j' in val:
                     val = re.sub(r"[iI\*]", '', val)
-                    if val == '':
-                        val = '1'
+                    if val[0] == '/' or val == '':
+                        val = '1' + val
+                    elif val[:2] == "-/":
+                        val = "-1" + val[1:]
                     elif val == '-':
                         val = "-1"
                     val = gmpy2.mpq(val)
@@ -263,6 +263,9 @@ def gmpy2ify(vals, force_type=None, use_precision=None):
                         imag = '-1'
                     elif imag == '+':
                         imag = '1'
+                    # TODO: do this better
+                    elif imag[0] == '+': # stopgap
+                        imag = imag[1:]
                     real = left
                 real, imag = gmpy2.mpq(real), gmpy2.mpq(imag)
                 if real != 0:
@@ -270,7 +273,7 @@ def gmpy2ify(vals, force_type=None, use_precision=None):
                 if imag != 0:
                     idict[i] = imag
         return rdict, idict
-    elif numeric_type == "float":
+    elif numeric_type == "Float":
         from math import ceil
         if use_precision:
             max_prec = use_precision
@@ -295,7 +298,7 @@ def gmpy2ify(vals, force_type=None, use_precision=None):
             if val != 0:
                 rdict[i] = val
         return rdict, idict
-    elif numeric_type == "complex":
+    elif numeric_type == "Complex":
         from math import ceil
         max_prec = 53 # start with default (i.e., double) precision
         ratio = 3.333 # rough ratio of precision to mantissa length

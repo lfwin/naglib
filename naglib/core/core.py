@@ -1,18 +1,15 @@
 """
 The creamy center of NAGlib.
-Includes meta stuff and compatibility stuff.
+Includes meta, ground-type, and compatibility stuff.
 """
 
 from __future__ import division, print_function
+from sys import version_info
 from six import with_metaclass
 
-import sys
-three = sys.version_info[0] == 3 # Python 3
-del sys
-
-if three:
+if version_info[0] == 3: # Py3
     string_types = (str,)
-else:
+else: # Py2
     string_types = (str, unicode)
 
 class BaseMeta(type):
