@@ -1,10 +1,11 @@
 """Outsourcing printing of NAGlib types"""
 
 # TODO: add support for gmpy2 and sympy types
+# TODO: add support for truncating
 
 import numbers
 
-def str_integer_type(printme, from_real_imag=False, truncate=None):
+def str_integer_type(printme, **kwargs):
     """
     Printing for Integer and GaussianInteger types
 
@@ -13,10 +14,10 @@ def str_integer_type(printme, from_real_imag=False, truncate=None):
     truncate: if None, attempt to intelligently determine whether
               we should truncate the length of the number
     """
-    if isinstance(printme, numbers.GaussianInteger) or from_real_imag:
-        if from_real_imag:
+    if isinstance(printme, numbers.GaussianInteger) or "shape" in kwargs.keys():
+        if "shape" in kwargs.keys():
             reals, imags = printme
-            shape = from_real_imag
+            shape = kwargs["shape"]
         else:
             reals, imags = printme._real, printme._imag
             shape = printme._shape
@@ -82,7 +83,7 @@ def str_integer_type(printme, from_real_imag=False, truncate=None):
         msg = "can't understand data type"
         raise TypeError(msg)
 
-def str_rational_type(printme, from_real_imag=False, truncate=None):
+def str_rational_type(printme, **kwargs):
     """
     Printing for Rational and GaussianRational types
 
@@ -92,10 +93,10 @@ def str_rational_type(printme, from_real_imag=False, truncate=None):
               we should truncate the length of the number
     """
     from fractions import Fraction
-    if isinstance(printme, numbers.GaussianRational) or from_real_imag:
-        if from_real_imag:
+    if isinstance(printme, numbers.GaussianRational) or "shape" in kwargs.keys():
+        if "shape" in kwargs.keys():
             reals, imags = printme
-            shape = from_real_imag
+            shape = kwargs["shape"]
         else:
             reals, imags = printme._real, printme._imag
             shape = printme._shape
@@ -142,12 +143,12 @@ def str_rational_type(printme, from_real_imag=False, truncate=None):
                 rep = '0'
             return rep
         else:
-            rkeys = real.keys()
-            ikeys = imag.keys()
+            rkeys = reals.keys()
+            ikeys = imags.keys()
             entries = []
             for i in range(shape):
                 if i in ikeys:
-                    num, denom = imag[i].numerator, imag[i].denominator
+                    num, denom = imags[i].numerator, imags[i].denominator
 
                 if i in rkeys and i in ikeys:
                     real, imag = reals[i], imags[i]
@@ -195,7 +196,7 @@ def str_rational_type(printme, from_real_imag=False, truncate=None):
         msg = "can't understand data type"
         raise TypeError(msg)
 
-def str_float_type(printme, from_real_imag=False, truncate=None):
+def str_float_type(printme, **kwargs):
     """
     Printing for Float and Complex types
 
@@ -204,24 +205,24 @@ def str_float_type(printme, from_real_imag=False, truncate=None):
     truncate: if None, attempt to intelligently determine whether
               we should truncate the length of the number
     """
-    if isinstance(printme, numbers.Complex) or from_real_imag:
-        if from_real_imag:
+    if isinstance(printme, numbers.Complex) or "shape" in kwargs.keys():
+        if "shape" in kwargs.keys():
             reals, imags = printme
-            shape = from_real_imag
+            shape = kwargs["shape"]
         else:
             reals, imags = printme._real, printme._imag
             shape = printme._shape
         if hasattr(printme, "_is_scalar") and printme._is_scalar:
             if reals and imags:
                 real, imag = reals[0], imags[0]
-                # if real == int(real):
-                #     str_real = "{0:.1}".format(real)
-                # else:
-                str_real = str(real)
-                # if imag == int(imag):
-                #     str_imag = "{0:.1}".format(abs(imag))
-                # else:
-                str_imag = str(abs(imag))
+                if real == int(real):
+                    str_real = "{0:.1}".format(real)
+                else:
+                    str_real = str(real)
+                if imag == int(imag):
+                    str_imag = "{0:.1}".format(abs(imag))
+                else:
+                    str_imag = str(abs(imag))
 
                 if imag > 0:
                     rep = "{0} + {1}*I".format(str_real, str_imag)
@@ -229,16 +230,16 @@ def str_float_type(printme, from_real_imag=False, truncate=None):
                     rep = "{0} - {1}*I".format(str_real, str_imag)
             elif reals:
                 real = reals[0]
-                # if real == int(real):
-                #     rep = "{0:.1}".format(real)
-                # else:
-                rep = str(real)
+                if real == int(real):
+                    rep = "{0:.1}".format(real)
+                else:
+                    rep = str(real)
             elif imags:
                 imag = imags[0]
-                # if imag == int(imag):
-                #     str_imag = "{0:.1}".format(imag)
-                # else:
-                str_imag = str(imag)
+                if imag == int(imag):
+                    str_imag = "{0:.1}".format(imag)
+                else:
+                    str_imag = str(imag)
                 rep = "{0}*I".format(str_imag)
             else: # zero
                 rep = '0'
@@ -250,14 +251,14 @@ def str_float_type(printme, from_real_imag=False, truncate=None):
             for i in range(shape):
                 if i in rkeys and i in ikeys:
                     real, imag = reals[i], imags[i]
-                    # if real == int(real):
-                    #     str_real = "{0:.1}".format(real)
-                    # else:
-                    str_real = str(real)
-                    # if imag == int(imag):
-                    #     str_imag = "{0:.1}".format(abs(imag))
-                    # else:
-                    str_imag = str(abs(imag))
+                    if real == int(real):
+                        str_real = "{0:.1}".format(real)
+                    else:
+                        str_real = str(real)
+                    if imag == int(imag):
+                        str_imag = "{0:.1}".format(abs(imag))
+                    else:
+                        str_imag = str(abs(imag))
 
                     if imag > 0:
                         rep = "{0} + {1}*I".format(str_real, str_imag)
@@ -265,16 +266,16 @@ def str_float_type(printme, from_real_imag=False, truncate=None):
                         rep = "{0} - {1}*I".format(str_real, str_imag)
                 elif i in rkeys:
                     real = reals[i]
-                    # if real == int(real):
-                    #     rep = "{0:.1}".format(real)
-                    # else:
-                    rep = str(real)
+                    if real == int(real):
+                        rep = "{0:.1}".format(real)
+                    else:
+                        rep = str(real)
                 elif i in ikeys:
                     imag = imags[i]
-                    # if imag == int(imag):
-                    #     str_imag = "{0:.1}".format(imag)
-                    # else:
-                    str_imag = str(imag)
+                    if imag == int(imag):
+                        str_imag = "{0:.1}".format(imag)
+                    else:
+                        str_imag = str(imag)
                     rep = "{0}*I".format(str_imag)
                 else: # zero
                     rep = '0'
@@ -286,3 +287,23 @@ def str_float_type(printme, from_real_imag=False, truncate=None):
     else:
         msg = "can't understand data type"
         raise TypeError(msg)
+
+def str_numeric_type(printme, **kwargs):
+    """pass printme on to the appropriate print function"""
+    if type(printme) == tuple and "ntype" in kwargs.keys():
+        ntype = kwargs["ntype"]
+        shape = kwargs["shape"]
+
+        if issubclass(ntype, numbers.GaussianInteger):
+            return str_integer_type(printme, shape=shape)
+        elif issubclass(ntype, numbers.GaussianRational):
+            return str_rational_type(printme, shape=shape)
+        elif issubclass(ntype, numbers.Complex):
+            return str_float_type(printme, shape=shape)
+
+    elif isinstance(printme, numbers.GaussianInteger):
+        return str_integer_type(printme, **kwargs)
+    elif isinstance(printme, numbers.GaussianRational):
+        return str_rational_type(printme, **kwargs)
+    elif isinstance(printme, numbers.Complex):
+        return str_float_type(printme, **kwargs)

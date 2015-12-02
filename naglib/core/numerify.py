@@ -9,15 +9,15 @@ is_int = re.compile(r"^[-+]?\d+$")
 is_rational = re.compile(r"^[-+]?\d+/\d+$")
 is_float = re.compile(r"^[-+]?\d*\.?\d+([eE][-+]?\d+)?$")
 
-is_imag_int = re.compile(r"^[-+]?([iI](\s*\*?\s*\d+)?|\d+\s*\*?\s*[iI])$")
-is_imag_rational = re.compile(r"^[-+]?([iI](\s*\*?\s*\d+)?/\d+|\d+\s*\*?\s*[iI]/\d+)$")
-is_imag_float = re.compile(r"^[-+]?([iI]\s*\*?\s*\d+\.?\d+([eE][-+]?\d+)?|\d*\.?\d+([eE][-+]?\d+)?(j|\s*\*?\s*[iI]))$")
+is_imag_int = re.compile(r"^[-+]?(I(\s*\*?\s*\d+)?|\d+\s*\*?\s*I)$")
+is_imag_rational = re.compile(r"^[-+]?(I(\s*\*?\s*\d+)?/\d+|\d+\s*\*?\s*I/\d+)$")
+is_imag_float = re.compile(r"^[-+]?(I\s*\*?\s*\d+\.?\d+([eE][-+]?\d+)?|\d*\.?\d+([eE][-+]?\d+)?(j|\s*\*?\s*I))$")
 
 def is_gaussian_int(val):
     # use positive lookbehind so we don't accidentally capture [+-] at the
     # beginning of a string
     val = re.sub(r' ', '', val)
-    breakup = re.split(r"(?<=[iI\d])[-+]", val)
+    breakup = re.split(r"(?<=[I\d])[-+]", val)
     if len(breakup) != 2:
         return False
     else:
@@ -31,7 +31,7 @@ def is_gaussian_rational(val):
     # use positive lookbehind so we don't accidentally capture [+-] at the
     # beginning of a string
     val = re.sub(r' ', '', val)
-    breakup = re.split(r"(?<=[iI\d])[-+]", val)
+    breakup = re.split(r"(?<=[I\d])[-+]", val)
     if len(breakup) != 2:
         return False
     else:
@@ -50,7 +50,7 @@ def is_complex(val):
     # use positive lookbehind so we don't accidentally capture [+-] at the
     # beginning of a string
     val = re.sub(r' ', '', val)
-    breakup = re.split(r"(?<=[iI\d])[-+]", val) # should cover the case of exps
+    breakup = re.split(r"(?<=[I\d])[-+]", val) # should cover the case of exps
     if len(breakup) != 2:
         return False
     else:
@@ -128,7 +128,7 @@ def get_numeric_type(vals, all_possibilities=False):
     else:
         return min_possibility
 
-def gmpy2ify(vals, force_type=None, use_precision=None):
+def numerify(vals, force_type=None, use_precision=None):
     """
     Return an iterable of gmpy2-format numerical values
 
@@ -154,8 +154,7 @@ def gmpy2ify(vals, force_type=None, use_precision=None):
             raise ValueError(msg)
 
     if type(vals) not in (tuple, list):
-        msg = "can't make sense of data type"
-        raise TypeError(msg)
+        vals = [vals]
     # strip () from Python complex types
     vals = [re.sub(r"^\(|\)$", "", str(val)) for val in vals]
 
@@ -186,10 +185,10 @@ def gmpy2ify(vals, force_type=None, use_precision=None):
     elif numeric_type == "GaussianInteger":
         for i in range(shape):
             val = re.sub(r'\s', '', vals[i]) # remove whitespace
-            breakup = re.split(r"(?<=[iI\d])([-+])", val)
+            breakup = re.split(r"(?<=[I\d])([-+])", val)
             if len(breakup) == 1: # pure real or pure imag
                 if 'i' in val or 'I' in val or 'j' in val:
-                    val = re.sub(r"[iI\*]", '', val)
+                    val = re.sub(r"[I\*]", '', val)
                     if val == '':
                         val = '1'
                     elif val == '-':
@@ -206,10 +205,10 @@ def gmpy2ify(vals, force_type=None, use_precision=None):
             else:
                 left, right = breakup[0], breakup[1] + breakup[2]
                 if 'i' in left or 'I' in left:
-                    imag = re.sub(r"[iI\*]", '', left)
+                    imag = re.sub(r"[I\*]", '', left)
                     real = right
                 else:
-                    imag = re.sub(r"[iI\*]", '', right)
+                    imag = re.sub(r"[I\*]", '', right)
                     if imag == '-':
                         imag = '-1'
                     elif imag == '+':
@@ -233,10 +232,10 @@ def gmpy2ify(vals, force_type=None, use_precision=None):
     elif numeric_type == "GaussianRational":
         for i in range(shape):
             val = re.sub(r'\s', '', vals[i]) # remove whitespace
-            breakup = re.split(r"(?<=[iI\d])([-+])", val)
+            breakup = re.split(r"(?<=[I\d])([-+])", val)
             if len(breakup) == 1: # pure real or pure imag
                 if 'i' in val or 'I' in val or 'j' in val:
-                    val = re.sub(r"[iI\*]", '', val)
+                    val = re.sub(r"[I\*]", '', val)
                     if val[0] == '/' or val == '':
                         val = '1' + val
                     elif val[:2] == "-/":
@@ -255,11 +254,15 @@ def gmpy2ify(vals, force_type=None, use_precision=None):
             else:
                 left, right = breakup[0], breakup[1] + breakup[2]
                 if 'i' in left or 'I' in left:
-                    imag = re.sub(r"[iI\*]", '', left)
+                    imag = re.sub(r"[I\*]", '', left)
                     real = right
                 else:
-                    imag = re.sub(r"[iI\*]", '', right)
-                    if imag == '-':
+                    imag = re.sub(r"[I\*]", '', right)
+                    if imag[0] == '/' or imag == '':
+                        imag = '1' + imag
+                    elif imag[:2] == "-/":
+                        imag = "-1" + imag[1:]
+                    elif imag == '-':
                         imag = '-1'
                     elif imag == '+':
                         imag = '1'
@@ -306,10 +309,10 @@ def gmpy2ify(vals, force_type=None, use_precision=None):
         rvals, ivals = [0 for i in range(shape)], [0 for i in range(shape)]
         for i in range(shape):
             val = re.sub(r'\s', '', vals[i]) # remove whitespace
-            breakup = re.split(r"(?<=[iI\d])([-+])", val)
+            breakup = re.split(r"(?<=[I\d])([-+])", val)
             if len(breakup) == 1: # pure real or pure imag
                 if 'i' in val or 'I' in val or 'j' in val:
-                    val = re.sub(r"[ijI\*]", '', val)
+                    val = re.sub(r"[jI\*]", '', val)
                     if val == '':
                         val = '1'
                     elif val == '-':
@@ -324,10 +327,10 @@ def gmpy2ify(vals, force_type=None, use_precision=None):
             else:
                 left, right = breakup[0], breakup[1] + breakup[2]
                 if 'i' in left or 'I' in left:
-                    ivals[i] = re.sub(r"[iI\*]", '', left)
+                    ivals[i] = re.sub(r"[I\*]", '', left)
                     rvals[i] = right
                 else:
-                    imag = re.sub(r"[ijI\*]", '', right)
+                    imag = re.sub(r"[jI\*]", '', right)
                     if imag == '-':
                         imag = '-1'
                     elif imag == '+':

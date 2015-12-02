@@ -16,4 +16,36 @@ def __naglib_debug():
     else:
         msg = 'unrecognized value for NAGLIB_DEBUG: {0}'.format(debug_str)
         raise RuntimeError(msg)
-DEBUG = __naglib_debug()
+debug = __naglib_debug()
+
+def __get_ground_types():
+    ground_num = "base"
+    ground_sym = "none"
+    try:
+        import libpybertini
+        ground_num = "bertini"
+        ground_sym = "bertini"
+    except ImportError:
+        pass
+
+    try:
+        import gmpy
+        ground_num = "gmpy"
+    except ImportError:
+        pass
+
+    try:
+        import gmpy2
+        ground_num = "gmpy2"
+    except ImportError:
+        pass
+
+    try:
+        import sympy
+        ground_sym = "sympy"
+    except ImportError:
+        pass
+
+    return ground_num, ground_sym
+
+ground_num, ground_sym = __get_ground_types()

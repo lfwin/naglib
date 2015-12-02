@@ -3,6 +3,7 @@
 from .base import NAGObject
 from .numbers import (Numeric, Integer, GaussianInteger, Rational,
                       GaussianRational, Float, Complex)
+from .symbols import Symbol
 
 # from .algebra import PolynomialSystem
 # from .base import AffinePoint, ProjectivePoint

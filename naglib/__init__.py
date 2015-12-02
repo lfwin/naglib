@@ -9,7 +9,7 @@ except ImportError as e:
     raise ImportError(e.message)
 del sanity
 
-from .envconstants import tol, dps, DEBUG
+from .envconstants import tol, dps, debug
 from .release import __version__, __authors__
 
 from .core import *

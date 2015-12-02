@@ -1,6 +1,6 @@
 """
 Numeric types in NAGlib.
-Numbers are actually represented in NAGlib as arrays of numbers.
+Numbers are represented as sparse real and imaginary types
 """
 
 from __future__ import division, print_function
@@ -10,14 +10,14 @@ import re
 
 from .base import NAGObject
 from .core import string_types
-from .tonumeric import gmpy2ify
-from .printing import str_integer_type, str_rational_type, str_float_type
+from .numerify import numerify
+from .printing import str_integer_type, str_rational_type, str_float_type, str_numeric_type
 #from sympy import sympify, Integer, Rational, Float, I
 
 def promotion_map(left, right):
     left = left.__class__
     right = right.__class__
-    from fractions import gcd
+    from fractions import gcd, Fraction
 
     pmap = {Complex:1,
             Float:2,
@@ -26,9 +26,18 @@ def promotion_map(left, right):
             GaussianInteger:9,
             Integer:18}
     pinv = dict([(pmap[k], k) for k in pmap.keys()])
+    pmap.update({complex:1,
+                 float:2,
+                 Fraction:6,
+                 int:18,
+                 long:18})
 
-    ltype = pmap[left]
-    rtype = pmap[right]
+    try:
+        ltype = pmap[left]
+        rtype = pmap[right]
+    except KeyError:
+        raise TypeError('')
+
     return pinv[gcd(ltype, rtype)]
 
 class Numeric(NAGObject):
@@ -52,67 +61,26 @@ class Numeric(NAGObject):
         else:
             numeric_type = None
 
+        try:
+            self._real, self._imag = numerify(*args, force_type=numeric_type)
+        except TypeError:
+            raise
+        except ValueError:
+            raise
+
         self._prec = -1
-
-        # short-circuit for arithmetic operations
-        kkeys = kwargs.keys()
-        if "real" in kkeys:
-            self._imag = {}
-            reals = kwargs["real"]
-            try:
-                new_reals,junk = gmpy2ify(reals.values(), force_type=numeric_type)
-                new_reals = new_reals.values()
-            except TypeError:
-                raise
-            except ValueError:
-                raise
-            self._real = reals.copy()
-            rkeys = self._real.keys()
-            for i in range(len(rkeys)):
-                self._real[rkeys[i]] = new_reals[i] # due to promotion
-        if "imag" in kkeys:
-            if not hasattr(self, "_real"):
-                self._real = {}
-            imags = kwargs["imag"]
-            try:
-                new_imags,junk = gmpy2ify(imags.values(), force_type=numeric_type)
-                new_imags = new_imags.values()
-            except TypeError:
-                raise
-            except ValueError:
-                raise
-            self._imag = imags.copy()
-            ikeys = self._imag.keys()
-            for i in range(len(ikeys)):
-                self._imag[ikeys[i]] = new_imags[i]
-
-        if not hasattr(self, "_real"):
-            try:
-                self._real, self._imag = gmpy2ify(*args, force_type=numeric_type)
-            except TypeError:
-                raise
-            except ValueError:
-                raise
-
         rkeys = self._real.keys()
         ikeys = self._imag.keys()
         # set precision if a floating-point type
         if rkeys:
             x = self._real[rkeys[0]]
-            if str(type(x)) == "<type 'mpfr'>": # this is so stupid; find a fix for this
+            if str(type(x)) == "<type 'mpfr'>": # find a fix for this
                 self._prec = x.precision
         elif ikeys:
             x = self._imag[ikeys[0]]
-            if str(type(x)) == "<type 'mpfr'>": # this is so stupid; find a fix for this
+            if str(type(x)) == "<type 'mpfr'>":
                 self._prec = x.precision
-        elif "prec" in kkeys:
-            self._prec = kwargs["prec"]
-
-        self._is_scalar = len(*args) == 1
-        self._is_real = (not self._imag)
-        self._is_imaginary = (not self._real)
         self._shape = len(*args)
-        self._is_number = True
 
     def __neg__(self):
         """x.__neg__() <==> -x"""
@@ -124,12 +92,9 @@ class Numeric(NAGObject):
             reals[k] = -self._real[k]
         for k in ikeys:
             imags[k] = -self._imag[k]
-        if isinstance(self, GaussianInteger):
-            final_str = str_integer_type((reals, imags),from_real_imag=self._shape)
-        elif isinstance(self, GaussianRational):
-            final_str = str_rational_type((reals, imags),from_real_imag=self._shape)
-        else:
-            final_str = str_float_type((reals, imags),from_real_imag=self._shape)
+
+        final_str = str_numeric_type((reals, imags), ntype=self.__class__,
+                                     shape=self._shape)
         if self._shape > 1:
             final_str = final_str[1:-1]
             reps = final_str.split(", ")
@@ -138,9 +103,64 @@ class Numeric(NAGObject):
         result = self.__class__(reps, prec=self._prec)
         return result
 
+    def __eq__(self, other):
+        """x.__eq__(y) <==> x == y"""
+        # TODO: check for equality with Python builtins
+        if not isinstance(other, Numeric):
+            return False
+        elif self._shape != other._shape:
+            return False
+        else:
+            srkeys = self._real.keys()
+            sikeys = self._imag.keys()
+            orkeys = other._real.keys()
+            oikeys = other._imag.keys()
+
+            if srkeys != orkeys or sikeys != oikeys:
+                return False
+            shape = self._shape
+            isequal = True
+            for i in range(shape):
+                if i in srkeys:
+                    isequal = (self._real[i] == other._real[i])
+                if i in sikeys:
+                    isequal = (self._imag[i] == other._imag[i])
+                if not isequal:
+                    return False
+            return True
+
+    def __abs__(self):
+        """
+        x.__abs__() <==> abs(x)
+        returns the 2-norm of self, to double precision
+        """
+        from math import sqrt
+
+        reals = self._real
+        imags = self._imag
+        rkeys = reals.keys()
+        ikeys = imags.keys()
+        shape = self._shape
+
+        absval = 0.0
+        for i in range(shape):
+            if i in ikeys and i in okeys:
+                absval += reals[i]**2 + imags[i]**2
+            elif i in rkeys:
+                absval += reals[i]**2
+            elif i in ikeys:
+                absval += imags[i]**2
+        return sqrt(absval)
 
     def __add__(self, other):
         """x.__add__(y) <==> x + y"""
+        # try:
+        #     newcls = promotion_map(self, other)
+        # except TypeError:
+        #     msg = ("unsupported operand type(s) for +: "
+        #            "'{0}' and '{1}'".format(type(self), type(other)))
+        #     raise TypeError(msg)
+
         if isinstance(other, Numeric):
             if isinstance(self, Complex) and isinstance(other, Complex): # works with Floats too
                 working_precision = min(self._prec, other._prec)
@@ -191,12 +211,8 @@ class Numeric(NAGObject):
                     if imags[i] == 0:
                         imags.pop(i)
 
-            if isinstance(newcls, GaussianInteger):
-                final_str = str_integer_type((reals, imags),from_real_imag=self._shape)
-            elif isinstance(newcls, GaussianRational):
-                final_str = str_rational_type((reals, imags),from_real_imag=self._shape)
-            else:
-                final_str = str_float_type((reals, imags),from_real_imag=self._shape)
+            final_str = str_numeric_type((reals, imags), ntype=newcls,
+                                         shape=self._shape)
             if self._shape > 1:
                 final_str = final_str[1:-1]
                 reps = final_str.split(", ")
@@ -261,7 +277,7 @@ class Numeric(NAGObject):
                 working_precision = -1
 
             newcls = promotion_map(self, other)
-            if self._is_scalar and other._is_scalar:
+            if self.is_scalar and other.is_scalar:
                 shape = 1
                 if self._real:
                     sreal = self._real[0]
@@ -300,7 +316,7 @@ class Numeric(NAGObject):
                     imags = {0:imag}
                 else:
                     imags = {}
-            elif self._is_scalar:
+            elif self.is_scalar:
                 shape = other._shape
                 if self._real:
                     sreal = self._real[0]
@@ -341,7 +357,7 @@ class Numeric(NAGObject):
                     if imag:
                         imags[i] = imag
 
-            elif other._is_scalar:
+            elif other.is_scalar:
                 return other*self
             else:
                 msg = "operation does not make sense"
@@ -353,12 +369,8 @@ class Numeric(NAGObject):
                    "'{0}' and '{1}'".format(type(self), type(other)))
             raise TypeError(msg)
 
-        if isinstance(newcls, GaussianInteger):
-            final_str = str_integer_type((reals, imags),from_real_imag=shape)
-        elif isinstance(newcls, GaussianRational):
-            final_str = str_rational_type((reals, imags),from_real_imag=shape)
-        else:
-            final_str = str_float_type((reals, imags),from_real_imag=shape)
+        final_str = str_numeric_type((reals, imags), ntype=newcls,
+                                     shape=shape)
         if shape > 1:
             final_str = final_str[1:-1]
             reps = final_str.split(", ")
@@ -383,7 +395,7 @@ class Numeric(NAGObject):
     def __div__(self, other):
         """x.__div__(y) <==> x/y"""
         if isinstance(other, Numeric):
-            if not other._is_scalar:
+            if not other.is_scalar:
                 msg = "operation doesn't make sense"
                 raise ShapeError(msg)
 
@@ -397,7 +409,12 @@ class Numeric(NAGObject):
                 working_precision = -1
 
             newcls = promotion_map(self, other)
-            if self._is_scalar:
+            if issubclass(newcls, Integer) and not (self % other).is_zero:
+                newcls = Rational
+            elif issubclass(newcls, GaussianInteger):
+                newcls = GaussianRational
+            shape = self._shape
+            if self.is_scalar:
                 if self._real:
                     a = self._real[0]
                 else:
@@ -432,8 +449,8 @@ class Numeric(NAGObject):
                     tmp2 = gmpy2.mpfr(a*d, working_precision)
                     imag = gmpy2.mpfr((tmp1 - tmp2)/denom, working_precision)
                 else:
-                    real = (a*c + b*d)/(c**2 + d**2)
-                    imag = (b*c - a*d)/(c**2 + d**2)
+                    real = gmpy2.mpq(a*c + b*d, c**2 + d**2)
+                    imag = gmpy2.mpq(b*c - a*d, c**2 + d**2)
 
                 if real:
                     reals = {0:real}
@@ -444,7 +461,6 @@ class Numeric(NAGObject):
                 else:
                     imags = {}
             else:
-                shape = self._shape
                 reals = {}
                 imags = {}
                 rkeys = self._real.keys()
@@ -488,8 +504,8 @@ class Numeric(NAGObject):
                         tmp2 = gmpy2.mpfr(a*d, working_precision)
                         imag = gmpy2.mpfr((tmp1 - tmp2)/denom, working_precision)
                     else:
-                        real = (a*c + b*d)/denom
-                        imag = (b*c - a*d)/denom
+                        real = gmpy2.mpq(a*c + b*d, denom)
+                        imag = gmpy2.mpq(b*c - a*d, denom)
 
                     if real:
                         reals[i] = real
@@ -503,12 +519,8 @@ class Numeric(NAGObject):
                    "'{0}' and '{1}'".format(type(self), type(other)))
             raise TypeError(msg)
 
-        if isinstance(newcls, GaussianInteger):
-            final_str = str_integer_type((reals, imags),from_real_imag=shape)
-        elif isinstance(newcls, GaussianRational):
-            final_str = str_rational_type((reals, imags),from_real_imag=shape)
-        else:
-            final_str = str_float_type((reals, imags),from_real_imag=shape)
+        final_str = str_numeric_type((reals, imags), ntype=newcls,
+                                     shape=shape)
         if shape > 1:
             final_str = final_str[1:-1]
             reps = final_str.split(", ")
@@ -516,6 +528,25 @@ class Numeric(NAGObject):
             reps = [final_str]
         result = newcls(reps, prec=working_precision)
         return result
+
+    @property
+    def is_number(self):
+        return True
+    @property
+    def shape(self):
+        return self._shape
+    @property
+    def is_scalar(self):
+        return self._shape == 1
+    @property
+    def is_real(self):
+        return not self._imag
+    @property
+    def is_imag(self):
+        return not self._real and not not self._real
+    @property
+    def is_zero(self):
+        return not self._real and not self._imag
 
 class Complex(Numeric):
     """Complex floating-point vector type"""
@@ -574,12 +605,51 @@ class GaussianInteger(GaussianRational):
         """x.__str__() <==> str(x)"""
         return str_integer_type(self)
 
-class Integer(Rational):
+    def __mod__(self, other):
+        """x.__mod__(y) <==> x % y"""
+        if isinstance(other, Integer) or type(other) in (int, long):
+            if isinstance(other, Integer):
+                if not other.is_scalar:
+                    msg = ("incompatible operand shapes "
+                           "{0} and {1}".format(self._shape, other._shape))
+                    raise ShapeError(msg)
+                other = other._real[0]
+
+            reals = self._real
+            imags = self._imag
+            rkeys = reals.keys()
+            ikeys = imags.keys()
+            shape = self._shape
+
+            nreals = {}
+            nimags = {}
+
+            for i in range(shape):
+                if i in rkeys:
+                    nreals[i] = reals[i] % other
+                    if nreals[i] == 0:
+                        nreals.pop(i)
+                if i in ikeys:
+                    nimags[i] = imags[i] % other
+                    if nimags[i] == 0:
+                        nimags.pop(i)
+            final_str = str_integer_type((nreals, nimags),shape=shape)
+            if shape > 1:
+                final_str = final_str[1:-1]
+                reps = final_str.split(", ")
+            else:
+                reps = [final_str]
+            result = self.__class__(reps)
+            return result
+        else:
+            msg = ""
+            raise TypeError(msg)
+
+class Integer(GaussianInteger):
     """Integer vector type"""
 
     def __init__(self, *args, **kwargs):
         super(Integer, self).__init__(*args, **kwargs)
-
 
 class ShapeError(Exception):
     def __init__(self, message):
