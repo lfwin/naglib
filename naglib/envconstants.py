@@ -1,8 +1,8 @@
 """Environmental (i.e., working) constants for NAGlib"""
 # set default tolerance
 tol = 1e-15
-# set default dps for arbitrary-precision fp numbers
-dps = 50
+# set default precision for arbitrary-precision fp numbers to double
+prec = 53
 # set default maximum length of numerical reprs
 replen = 5
 
