@@ -12,12 +12,7 @@ if version_info[0] == 3: # Py3
 else: # Py2
     string_types = (str, unicode)
 
-def is_iterable(thing):
-    try:
-        iter(thing)
-    except TypeError:
-        return False
-    return True
+list_types = (list, tuple)
 
 class BaseMeta(type):
     def __init__(cls, *args, **kwargs):

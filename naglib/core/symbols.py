@@ -9,23 +9,28 @@ import re
 
 from .base import NAGObject
 from .core import string_types
-
-from sympy import sympify, SympifyError
+from .groundtypes import SYMBOLS
 
 valid_sym = re.compile(r"^[A-z][A-z0-9_]*$")
 
 class Symbol(NAGObject):
 	def __init__(self, *args, **kwargs):
 		super(Symbol, self).__init__(*args, **kwargs)
+		kkeys = kwargs.keys()
 
-		if not type(args[0]) in string_types:
+		try:
+			self._name = args[0]
+		except IndexError:
+			if "name" in kkeys:
+				self._name = kwargs["name"]
+
+		if not type(self._name) in string_types:
 			msg = "can't understand data type"
 			raise TypeError(msg)
 
-		if not valid_sym.match(args[0]):
+		if not valid_sym.match(self._name):
 			msg = "valid symbols begin with ascii letters and contain only letters, numbers, and underscores"
 			raise ValueError(msg)
-		self._name = args[0]
 
 	def __repr__(self):
 		"""x.__repr__ <==> repr(x)"""
@@ -35,9 +40,11 @@ class Symbol(NAGObject):
 		"""x.__str__ <==> str(x)"""
 		return self._name
 
-	def __neg__(self):
-		"""x.__neg__() <==> -x"""
-		return Monomial()
+	def __copy__(self):
+        """x.__copy__ <==> copy(x)"""
+        cls = self.__class__
+        name = self._name
+		return cls(name)
 
 	def __eq__(self, other):
 		"""x.__eq__(y) <==> x == y"""
@@ -46,27 +53,24 @@ class Symbol(NAGObject):
 			return False
 		return self._name == other._name
 
-	def __add__(self, other):
-		"""x.__add__(y) <==> x + y"""
-		repstr = self.__str__() + " + " + str(other)
+
+class Monomial(NAGObject):
+	"""Monomial class; for internal use only"""
+	def __init__(self, *args, **kwargs):
+		super(Monomial, self).__init__(*args, **kwargs)
+        kkeys = kwargs.keys()
+
 		try:
-			rep = sympify(repstr)
-		except SympifyError as e:
-			message = e.message
-			raise ValueError(message)
+			variables = args[0]
+			degrees = args[1]
+		except IndexError:
+			if "variables" in kkeys:
+				variables = kkeys["variables"]
+			else:
+				variables = ()
+			if "degrees" in kkeys:
+				degrees = kkeys["variables"]
+			else:
+				degrees = tuple([0 for i in range(len(variables))])
 
-class Polynomial(Symbol):
-	def __init__(self, *args, **kwargs):
-		super(self, Polynomial).__init__(*args, **kwargs)
-
-class Monomial(Polynomial):
-	def __init__(self, *args, **kwargs):
-		super(self, Monomial).__init__(*args, **kwargs)
-
-class Term(Polynomial):
-	def __init__(self, *args, **kwargs):
-		super(self, Term).__init__(*args, **kwargs)
-
-class PolynomialSystem(Symbol):
-	def __init__(self, *args, **kwargs):
-		super(self, PolynomialSystem).__init__(*args, **kwargs)
+        self._ground_type = SYMBOLS
