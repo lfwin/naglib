@@ -14,18 +14,20 @@ class NAGObject(with_metaclass(BaseMeta)):
         return obj
 
     def __init__(self, *args, **kwargs):
-        self._is_scalar = False
         self._is_number = False
+        self._is_scalar = False
         self._is_symbol = False
 
     # TODO: add pickle support
 
     @property
-    def is_scalar(self):
-        return self._is_scalar
-    @property
     def is_number(self):
         return self._is_number
+
+    @property
+    def is_scalar(self):
+        return self._is_scalar
+
     @property
     def is_symbol(self):
         return self._is_symbol
