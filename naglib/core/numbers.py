@@ -152,7 +152,7 @@ class Numeric(NAGObject):
         else:
             return cls((real, imag))
 
-    def __coerce__(self, other, try_float=False):
+    def __coerce__(self, other, try_float=False, div=False):
         left = self.__class__
         right = other.__class__
         from fractions import gcd, Fraction
@@ -175,9 +175,14 @@ class Numeric(NAGObject):
             raise TypeError(msg)
 
         if try_float:
-            return Float
+            dtype = Float
         else:
-            return pinv[gcd(ltype, rtype)]
+            dtype = pinv[gcd(ltype, rtype)]
+
+        if div and issubclass(dtype, Integer):
+            return Rational
+        else:
+            return dtype
 
     def __eq__(self, other):
         """x.__eq__(y) <==> x == y"""
@@ -375,24 +380,24 @@ class Numeric(NAGObject):
     def __div__(self, other):
         """x.__div__(y) <==> x/y"""
         try:
-            cls = self.__coerce__(other)
+            cls = self.__coerce__(other, div=True)
         except TypeError:
             msg = "unsupported operand type(s) for /: '{0}' and '{1}'".format(type(self), type(other))
             raise TypeError(msg)
 
-        if other == 0 or (hasattr(other, "is_zero") and other.is_zero()):
-            msg = "division by zero"
-            raise ZeroDivisionError(msg)
-
-        sreal = self._real
-        oreal = other.real
-        simag = self._imag
-        oimag = other.imag
+        s_as_type = cls(self)
+        o_as_type = cls(other)
+        sreal = s_as_type._real
+        oreal = o_as_type.real
+        simag = s_as_type._imag
+        oimag = o_as_type.imag
 
         try:
             denom = oreal**2 + oimag**2
             real = (sreal*oreal + simag*oimag)/denom
             imag = (simag*oreal - sreal*oimag)/denom
+        except ZeroDivisionError:
+            raise
         except:
             nclass = real.__class__
             oreal = nclass(str(oreal)) # hacky
@@ -402,28 +407,31 @@ class Numeric(NAGObject):
             imag = (simag*oreal - sreal*oimag)/denom
 
         return cls((real, imag))
+
+    def __truediv__(self, other):
+        return self.__div__(other)
 
     def __rdiv__(self, other):
         """x.__rdiv__(y) <==> y/x"""
         try:
-            cls = self.__coerce__(other)
+            cls = self.__coerce__(other, div=True)
         except TypeError:
             msg = "unsupported operand type(s) for /: '{0}' and '{1}'".format(type(other), type(self))
             raise TypeError(msg)
 
-        if self == 0 or self.is_zero():
-            msg = "division by zero"
-            raise ZeroDivisionError(msg)
-
-        sreal = self._real
-        oreal = other.real
-        simag = self._imag
-        oimag = other.imag
+        s_as_type = cls(self)
+        o_as_type = cls(other)
+        sreal = s_as_type._real
+        oreal = o_as_type.real
+        simag = s_as_type._imag
+        oimag = o_as_type.imag
 
         try:
             denom = sreal**2 + simag**2
             real = (sreal*oreal + simag*oimag)/denom
             imag = (sreal*oimag - simag*oreal)/denom
+        except ZeroDivisionError:
+            raise
         except:
             nclass = real.__class__
             oreal = nclass(str(oreal)) # hacky
@@ -433,6 +441,9 @@ class Numeric(NAGObject):
             imag = (sreal*oimag - simag*oreal)/denom
 
         return cls((real, imag))
+
+    def __rtruediv__(self, other):
+        return self.__rdiv__(other)
 
     def __pow__(self, other):
         """x.__pow__(y) <==> x**y"""
@@ -970,7 +981,7 @@ class Float(Numeric):
     def __div__(self, other):
         """x.__div__(y) <==> x/y"""
         try:
-            cls = self.__coerce__(other)
+            cls = self.__coerce__(other, div=True)
         except TypeError:
             msg = "unsupported operand type(s) for /: '{0}' and '{1}'".format(type(self), type(other))
             raise TypeError(msg)
@@ -982,10 +993,6 @@ class Float(Numeric):
             prec = self._prec
         else:
             from naglib.envconstants import prec
-
-        if other == 0 or (hasattr(other, "is_zero") and other.is_zero()):
-            msg = "division by zero"
-            raise ZeroDivisionError(msg)
 
         sreal = self._real
         oreal = other.real
@@ -999,6 +1006,8 @@ class Float(Numeric):
                     denom = oreal**2 + oimag**2
                     real = (sreal*oreal + simag*oimag)/denom
                     imag = (simag*oreal - sreal*oimag)/denom
+                except ZeroDivisionError:
+                    raise
                 except:
                     nclass = real.__class__
                     oreal = nclass(str(oreal), prec) # hacky
@@ -1011,6 +1020,8 @@ class Float(Numeric):
                 denom = oreal**2 + oimag**2
                 real = (sreal*oreal + simag*oimag)/denom
                 imag = (simag*oreal - sreal*oimag)/denom
+            except ZeroDivisionError:
+                raise
             except:
                 nclass = real.__class__
                 oreal = nclass(str(oreal), prec) # hacky
@@ -1024,7 +1035,7 @@ class Float(Numeric):
     def __rdiv__(self, other):
         """x.__rdiv__(y) <==> y/x"""
         try:
-            cls = self.__coerce__(other)
+            cls = self.__coerce__(other, div=True)
         except TypeError:
             msg = "unsupported operand type(s) for /: '{0}' and '{1}'".format(type(other), type(self))
             raise TypeError(msg)
@@ -1036,10 +1047,6 @@ class Float(Numeric):
             prec = self._prec
         else:
             from naglib.envconstants import prec
-
-        if self == 0 or self.is_zero():
-            msg = "division by zero"
-            raise ZeroDivisionError(msg)
 
         sreal = self._real
         oreal = other.real
@@ -1053,6 +1060,8 @@ class Float(Numeric):
                     denom = sreal**2 + simag**2
                     real = (sreal*oreal + simag*oimag)/denom
                     imag = (sreal*oimag - simag*oreal)/denom
+                except ZeroDivisionError:
+                    raise
                 except:
                     nclass = real.__class__
                     oreal = nclass(str(oreal), prec) # hacky
@@ -1065,6 +1074,8 @@ class Float(Numeric):
                 denom = sreal**2 + simag**2
                 real = (sreal*oreal + simag*oimag)/denom
                 imag = (sreal*oimag - simag*oreal)/denom
+            except ZeroDivisionError:
+                raise
             except:
                 nclass = real.__class__
                 oreal = nclass(str(oreal), prec) # hacky

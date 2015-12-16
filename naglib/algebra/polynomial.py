@@ -54,7 +54,16 @@ class Monomial(NAGObject):
         if self.is_constant:
             return '1'
         else:
-            return '*'.join(["{0}**{1}".format(v, degrees[v]) if degrees[v] != 1 else str(v) for v in variables])
+            dstr = []
+            for v in degrees.keys():
+                d = degrees[v]
+                if d == 1:
+                    dstr.append(str(v))
+                elif d < 0:
+                    dstr.append("{0}**({1})".format(v, d))
+                else:
+                    dstr.append("{0}**{1}".format(v, d))
+            return '*'.join(dstr)
 
     def __neg__(self):
         """x.__neg__() <==> -x"""
@@ -88,6 +97,8 @@ class Monomial(NAGObject):
             return as_term + other
         except TypeError:
             raise
+        except NotImplementedError:
+            raise
 
     def __radd__(self, other):
         """x.__radd__(y) <==> y + x"""
@@ -95,6 +106,8 @@ class Monomial(NAGObject):
         try:
             return other + as_term
         except TypeError:
+            raise
+        except NotImplementedError:
             raise
 
     def __sub__(self, other):
@@ -104,6 +117,8 @@ class Monomial(NAGObject):
             return as_term - other
         except TypeError:
             raise
+        except NotImplementedError:
+            raise
 
     def __rsub__(self, other):
         """x.__rsub__(y) <==> y - x"""
@@ -112,30 +127,40 @@ class Monomial(NAGObject):
             return other - as_term
         except TypeError:
             raise
+        except NotImplementedError:
+            raise
 
     def __mul__(self, other):
         """x.__mul__(y) <==> x*y"""
         cls = self.__class__
 
-        degrees = self._degrees
-        dkeys = degrees.keys()
-
         from naglib.core.symbols import Symbol
 
         if isinstance(other, Term):
-            as_term = Term(degrees, 1)
+            as_term = Term(self._degrees, 1)
             return as_term*other
         elif isinstance(other, cls):
-            from collections import Counter
-            sdegs = Counter(degrees)
-            odegs = Counter(other._degrees)
-            degrees = dict(sdegs + odegs)
+            sdegrees = self._degrees
+            odegrees = other._degrees
+            svars = set(sdegrees.keys())
+            ovars = set(odegrees.keys())
+
+            degrees = {}
+            for v in svars.intersection(ovars):
+                degrees[v] = sdegrees[v] + odegrees[v]
+            for v in svars.symmetric_difference(ovars):
+                if v in svars:
+                    degrees[v] = sdegrees[v]
+                else:
+                    degrees[v] = odegrees[v]
             return cls(degrees)
         elif isinstance(other, Symbol):
             other = Monomial({other:1})
             return self*other
+        elif isinstance(other, Polynomial):
+            raise NotImplementedError
         elif hasattr(other, "real") and hasattr(other, "imag"):
-            return Term(degrees, other)
+            return Term(self._degrees, other)
         else:
             msg = "unsupported operand type(s) for *: {0} and {1}".format(type(self), type(other))
             raise TypeError(msg)
@@ -144,32 +169,115 @@ class Monomial(NAGObject):
         """x.__rmul__(y) <==> y*x"""
         cls = self.__class__
 
-        degrees = self._degrees
-        dkeys = degrees.keys()
-
         from naglib.core.symbols import Symbol
 
         if isinstance(other, Term):
-            as_term = Term(degrees, 1)
+            as_term = Term(self._degrees, 1)
             return other*as_term
         elif isinstance(other, cls):
-            from collections import Counter
-            sdegs = Counter(degrees)
-            odegs = Counter(other._degrees)
-            degrees = dict(odges + sdegs)
+            sdegrees = self._degrees
+            odegrees = other._degrees
+            svars = set(sdegrees.keys())
+            ovars = set(odegrees.keys())
+
+            degrees = {}
+            for v in svars.intersection(ovars):
+                degrees[v] = sdegrees[v] + odegrees[v]
+            for v in svars.symmetric_difference(ovars):
+                if v in svars:
+                    degrees[v] = sdegrees[v]
+                else:
+                    degrees[v] = odegrees[v]
             return cls(degrees)
         elif isinstance(other, Symbol):
             other = Monomial({other:1})
             return other*self
+        elif isinstance(other, Polynomial):
+            raise NotImplementedError
         elif hasattr(other, "real") and hasattr(other, "imag"):
-            return Term(degrees, other)
+            return Term(self._degrees, other)
         else:
             msg = "unsupported operand type(s) for *: {0} and {1}".format(type(other), type(self))
             raise TypeError(msg)
 
-    def __pow__(self, other):
+    def __div__(self, other):
+        """x.__div__(y) <==> x/y"""
         cls = self.__class__
-        degrees = self._degrees.copy()
+
+        from naglib.core.symbols import Symbol
+
+        if isinstance(other, Term):
+            as_term = Term(self._degrees, 1)
+            return as_term/other
+        elif isinstance(other, cls):
+            sdegrees = self._degrees
+            odegrees = other._degrees
+            svars = set(sdegrees.keys())
+            ovars = set(odegrees.keys())
+
+            degrees = {}
+            for v in svars.intersection(ovars):
+                degrees[v] = sdegrees[v] - odegrees[v]
+            for v in svars.symmetric_difference(ovars):
+                if v in svars:
+                    degrees[v] = sdegrees[v]
+                else:
+                    degrees[v] = -odegrees[v]
+            return cls(degrees)
+        elif isinstance(other, Symbol):
+            other = Monomial({other:1})
+            return self/other
+        elif isinstance(other, Polynomial):
+            raise NotImplementedError
+        elif hasattr(other, "real") and hasattr(other, "imag"):
+            try:
+                return Term(self._degrees, 1/other)
+            except ZeroDivisionError:
+                raise
+        else:
+            msg = "unsupported operand type(s) for /: {0} and {1}".format(type(self), type(other))
+            raise TypeError(msg)
+
+    def __rdiv__(self, other):
+        """x.__rdiv__(y) <==> y/x"""
+        cls = self.__class__
+
+        from naglib.core.symbols import Symbol
+
+        if isinstance(other, Term):
+            as_term = Term(self._degrees, 1)
+            return other/as_term
+        elif isinstance(other, cls):
+            sdegrees = self._degrees
+            odegrees = other._degrees
+            svars = set(sdegrees.keys())
+            ovars = set(odegrees.keys())
+
+            degrees = {}
+            for v in svars.intersection(ovars):
+                degrees[v] = odegrees[v] - sdegrees[v]
+            for v in svars.symmetric_difference(ovars):
+                if v in svars:
+                    degrees[v] = -sdegrees[v]
+                else:
+                    degrees[v] = odegrees[v]
+            return cls(degrees)
+        elif isinstance(other, Symbol):
+            other = Monomial({other:1})
+            return other/self
+        elif isinstance(other, Polynomial):
+            raise NotImplementedError
+        elif hasattr(other, "real") and hasattr(other, "imag"):
+            degrees = {v:-self._degrees[v] for v in degrees.keys()}
+            return Term(degrees, other)
+        else:
+            msg = "unsupported operand type(s) for /: {0} and {1}".format(type(other), type(self))
+            raise TypeError(msg)
+
+    def __pow__(self, other):
+        """x.__pow__(y) <==> x**y"""
+        cls = self.__class__
+        degrees = self._degrees
 
         try:
             degrees = dict([(v,degrees[v]*other) for v in degrees.keys()])
@@ -414,13 +522,22 @@ class Term(Monomial):
         from naglib.core.symbols import Symbol
 
         if isinstance(other, cls):
-            from collections import Counter
             scoeff = self._coefficient
             ocoeff = other.coefficient
-            sdegrees = Counter(self._degrees)
-            odegrees = Counter(other._degrees)
+            sdegrees = self._degrees
+            odegrees = other._degrees
+            svars = set(sdegrees.keys())
+            ovars = set(odegrees.keys())
+
+            degrees = {}
+            for v in svars.intersection(ovars):
+                degrees[v] = sdegrees[v] + odegrees[v]
+            for v in svars.symmetric_difference(ovars):
+                if v in svars:
+                    degrees[v] = sdegrees[v]
+                else:
+                    degrees[v] = odegrees[v]
             coeff = scoeff*ocoeff
-            degrees = dict(sdegrees + odegrees)
 
             return cls(degrees, coeff)
 
@@ -431,11 +548,11 @@ class Term(Monomial):
             degrees = other._degrees
             other = Term(degrees, 1)
             return self*other
+        elif isinstance(other, Polynomial):
+            raise NotImplementedError
         elif hasattr(other, "real") and hasattr(other, "imag"):
             other = Term({}, other)
             return self*other
-        elif isinstance(other, Polynomial):
-            raise NotImplementedError
         else:
             msg = "unsupported operand type(s) for *: {0} and {1}".format(type(self), type(other))
             raise TypeError(msg)
@@ -447,13 +564,22 @@ class Term(Monomial):
         from naglib.core.symbols import Symbol
 
         if isinstance(other, cls):
-            from collections import Counter
             scoeff = self._coefficient
             ocoeff = other.coefficient
-            sdegrees = Counter(self._degrees)
-            odegrees = Counter(other._degrees)
+            sdegrees = self._degrees
+            odegrees = other._degrees
+            svars = set(sdegrees.keys())
+            ovars = set(odegrees.keys())
+
+            degrees = {}
+            for v in svars.intersection(ovars):
+                degrees[v] = sdegrees[v] + odegrees[v]
+            for v in svars.symmetric_difference(ovars):
+                if v in svars:
+                    degrees[v] = sdegrees[v]
+                else:
+                    degrees[v] = odegrees[v]
             coeff = ocoeff*scoeff
-            degrees = dict(odegrees + sdegrees)
 
             return cls(degrees, coeff)
 
@@ -464,16 +590,113 @@ class Term(Monomial):
             degrees = other._degrees
             other = Term(degrees, 1)
             return other*self
+        elif isinstance(other, Polynomial):
+            raise NotImplementedError
         elif hasattr(other, "real") and hasattr(other, "imag"):
             other = Term({}, other)
             return other*self
-        elif isinstance(other, Polynomial):
-            raise NotImplementedError
         else:
             msg = "unsupported operand type(s) for *: {0} and {1}".format(type(other), type(self))
             raise TypeError(msg)
 
+    def __div__(self, other):
+        """x.__div__(y) <==> x/y"""
+        cls = self.__class__
+
+        from naglib.core.symbols import Symbol
+
+        if isinstance(other, cls):
+            scoeff = self._coefficient
+            ocoeff = other.coefficient
+            sdegrees = self._degrees
+            odegrees = other._degrees
+            svars = set(sdegrees.keys())
+            ovars = set(odegrees.keys())
+
+            degrees = {}
+            for v in svars.intersection(ovars):
+                degrees[v] = sdegrees[v] - odegrees[v]
+            for v in svars.symmetric_difference(ovars):
+                if v in svars:
+                    degrees[v] = sdegrees[v]
+                else:
+                    degrees[v] = -odegrees[v]
+            coeff = scoeff/(ocoeff)
+
+            return cls(degrees, coeff)
+
+        elif isinstance(other, Symbol):
+            other = Term({other:1}, 1)
+            return self/other
+        elif isinstance(other, Monomial):
+            degrees = other._degrees
+            other = Term(degrees, 1)
+            return self/other
+        elif isinstance(other, Polynomial):
+            raise NotImplementedError
+        elif hasattr(other, "real") and hasattr(other, "imag"):
+            other = Term({}, other)
+            try:
+                return self/other
+            except ZeroDivisionError:
+                raise
+        else:
+            msg = "unsupported operand type(s) for /: {0} and {1}".format(type(self), type(other))
+            raise TypeError(msg)
+
+    def __truediv__(self, other):
+        return self.__div__(other)
+
+    def __rdiv__(self, other):
+        """x.__rdiv__(y) <==> y/x"""
+        cls = self.__class__
+
+        from naglib.core.symbols import Symbol
+
+        if isinstance(other, cls):
+            scoeff = self._coefficient
+            ocoeff = other.coefficient
+            sdegrees = self._degrees
+            odegrees = other._degrees
+            svars = set(sdegrees.keys())
+            ovars = set(odegrees.keys())
+
+            degrees = {}
+            for v in svars.intersection(ovars):
+                degrees[v] = -sdegrees[v] + odegrees[v]
+            for v in svars.symmetric_difference(ovars):
+                if v in svars:
+                    degrees[v] = -sdegrees[v]
+                else:
+                    degrees[v] = odegrees[v]
+            try:
+                coeff = ocoeff/scoeff
+            except ZeroDivisionError:
+                raise
+
+            return cls(degrees, coeff)
+
+        elif isinstance(other, Symbol):
+            other = Term({other:1}, 1)
+            return other/self
+        elif isinstance(other, Monomial):
+            degrees = other._degrees
+            other = Term(degrees, 1)
+            return other/self
+        elif isinstance(other, Polynomial):
+            raise NotImplementedError
+        elif hasattr(other, "real") and hasattr(other, "imag"):
+            other = Term({}, other)
+            return other/self
+        else:
+            msg = "unsupported operand type(s) for /: {0} and {1}".format(type(other), type(self))
+            raise TypeError(msg)
+
+    def __rtruediv__(self, other):
+        return self.__rdiv__(other)
+
     def __pow__(self, other):
+        """x.__pow__(y) <==> x**y"""
         cls = self.__class__
 
         coeff = self._coefficient
