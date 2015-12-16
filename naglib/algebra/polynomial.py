@@ -51,10 +51,121 @@ class Monomial(NAGObject):
         degrees = self._degrees
         variables = sorted(degrees.keys(), reverse=True)
 
-        if self.total_degree == 0:
+        if self.is_constant:
             return '1'
         else:
             return '*'.join(["{0}**{1}".format(v, degrees[v]) if degrees[v] != 1 else str(v) for v in variables])
+
+    def __neg__(self):
+        """x.__neg__() <==> -x"""
+        degrees = self._degrees
+        return Term(degrees, -1)
+
+    def __eq__(self, other):
+        """x.__eq__(y) <==> x==y"""
+        sdegrees = self._degrees
+
+        from naglib.core.symbols import Symbol
+
+        if isinstance(other, Symbol):
+            dkeys = sdegrees.keys()
+            return (len(dkeys) == 1 and other in dkeys and sdegrees[other] == 1)
+        elif isinstance(other, Term):
+            odegrees = other._degrees
+            return (odegrees == sdegrees and other.coefficient == 1)
+        elif isinstance(other, Monomial):
+            odegrees = other._degrees
+            return odegrees == sdegrees
+        elif isinstance(other, Polynomial):
+            return NotImplementedError
+        else:
+            return False
+
+    def __add__(self, other):
+        """x.__add__(y) <==> x + y"""
+        as_term = Term(self._degrees, 1)
+        try:
+            return as_term + other
+        except TypeError:
+            raise
+
+    def __radd__(self, other):
+        """x.__radd__(y) <==> y + x"""
+        as_term = Term(self._degrees, 1)
+        try:
+            return other + as_term
+        except TypeError:
+            raise
+
+    def __sub__(self, other):
+        """x.__sub__(y) <==> x - y"""
+        as_term = Term(self._degrees, 1)
+        try:
+            return as_term - other
+        except TypeError:
+            raise
+
+    def __rsub__(self, other):
+        """x.__rsub__(y) <==> y - x"""
+        as_term = Term(self._degrees, 1)
+        try:
+            return other - as_term
+        except TypeError:
+            raise
+
+    def __mul__(self, other):
+        """x.__mul__(y) <==> x*y"""
+        cls = self.__class__
+
+        degrees = self._degrees
+        dkeys = degrees.keys()
+
+        from naglib.core.symbols import Symbol
+
+        if isinstance(other, Term):
+            as_term = Term(degrees, 1)
+            return as_term*other
+        elif isinstance(other, cls):
+            from collections import Counter
+            sdegs = Counter(degrees)
+            odegs = Counter(other._degrees)
+            degrees = dict(sdegs + odegs)
+            return cls(degrees)
+        elif isinstance(other, Symbol):
+            other = Monomial({other:1})
+            return self*other
+        elif hasattr(other, "real") and hasattr(other, "imag"):
+            return Term(degrees, other)
+        else:
+            msg = "unsupported operand type(s) for *: {0} and {1}".format(type(self), type(other))
+            raise TypeError(msg)
+
+    def __rmul__(self, other):
+        """x.__rmul__(y) <==> y*x"""
+        cls = self.__class__
+
+        degrees = self._degrees
+        dkeys = degrees.keys()
+
+        from naglib.core.symbols import Symbol
+
+        if isinstance(other, Term):
+            as_term = Term(degrees, 1)
+            return other*as_term
+        elif isinstance(other, cls):
+            from collections import Counter
+            sdegs = Counter(degrees)
+            odegs = Counter(other._degrees)
+            degrees = dict(odges + sdegs)
+            return cls(degrees)
+        elif isinstance(other, Symbol):
+            other = Monomial({other:1})
+            return other*self
+        elif hasattr(other, "real") and hasattr(other, "imag"):
+            return Term(degrees, other)
+        else:
+            msg = "unsupported operand type(s) for *: {0} and {1}".format(type(other), type(self))
+            raise TypeError(msg)
 
     def __pow__(self, other):
         cls = self.__class__
@@ -74,10 +185,14 @@ class Monomial(NAGObject):
         degrees = self._degrees.copy()
         return cls(degrees)
 
-    def degree(self, arg):
+    def degree(self, arg=None):
         """returns the degree of the argument"""
+        degrees = self._degrees
+
+        if arg is None:
+            return degrees.values()
         try:
-            return self._degrees[arg]
+            return degrees[arg]
         except KeyError:
             return 0
 
@@ -86,24 +201,15 @@ class Monomial(NAGObject):
         degrees = self._degrees
         return sum(degrees.values())
 
-class Term(NAGObject):
+    @property
+    def is_constant(self):
+        return self.total_degree() == 0
+
+class Term(Monomial):
     """Term (monomial with a coefficient) class; for internal use only"""
     def __init__(self, *args, **kwargs):
         super(Term, self).__init__(*args, **kwargs)
         kkeys = kwargs.keys()
-
-        try:
-            monomial = args[0]
-        except IndexError: # nothing in args
-            if "monomial" in kkeys:
-                monomial = kkeys["monomial"]
-            else:
-                monomial = Monomial({})
-        try:
-            assert(isinstance(monomial, Monomial))
-        except AssertionError:
-            msg = "give us a Monomial"
-            raise TypeError(msg)
 
         try:
             coefficient = args[1]
@@ -115,7 +221,7 @@ class Term(NAGObject):
         try:
             assert(isinstance(coefficient, Numeric))
         except AssertionError:
-            if not hasattr(coefficient, real) and hasattr(coefficient, imag):
+            if not (hasattr(coefficient, "real") and hasattr(coefficient, "imag")):
                 msg = "coefficient needs to be a number, guy"
                 raise TypeError(msg)
             if isinstance(coefficient, int) or isinstance(coefficient, long):
@@ -126,9 +232,8 @@ class Term(NAGObject):
                 coefficient = Float(coefficient)
 
         if coefficient == 0: # no need to store degrees if we don't have to
-            monomial = Monomial({})
+            self._degrees = {}
 
-        self._monomial = monomial.copy()
         self._coefficient = coefficient.copy()
 
         self._is_symbol = True
@@ -142,23 +247,264 @@ class Term(NAGObject):
 
     def __str__(self):
         """x.__str__() <==> str(x)"""
-        mon, coeff = self._monomial, self._coefficient
+        degrees = self._degrees
+        coefficient = self._coefficient
 
-        if mon.total_degree() == 0:
-            return str(coeff)
-        elif abs(coeff) == 1 and (isinstance(coeff, Integer) or isinstance(coeff, Rational)):
-            if coeff == 1:
-                return str(mon)
-            else:
-                return '-' + str(mon)
+        if self.is_constant:
+            return str(coefficient)
         else:
-            return '*'.join([str(coeff), str(mon)])
+            monstr = super(Term, self).__str__()
+            if coefficient == 1:
+                return monstr
+            elif coefficient == -1:
+                return '-' + monstr
+            elif coefficient.imag != 0:
+                return "({0})*{1}".format(coefficient, monstr)
+            else:
+                return "{0}*{1}".format(coefficient, monstr)
 
     def __neg__(self):
         """x.__neg__() <==> -x"""
         cls = self.__class__
-        mon, coeff = self._monomial, self._coefficient
-        return cls(mon, -coeff)
+        degrees, coefficient = self._degrees.copy(), self._coefficient
+        return cls(degrees, -coefficient)
+
+    def __eq__(self, other):
+        """x.__eq__(y) <==> x==y"""
+        sdegrees = self._degrees
+
+        from naglib.core.symbols import Symbol
+
+        if isinstance(other, Symbol):
+            dkeys = sdegrees.keys()
+            return (len(dkeys) == 1 and self._coefficient == 1 and other in dkeys and sdegrees[other] == 1)
+        elif isinstance(other, Term):
+            odegrees = other._degrees
+            return (odegrees == sdegrees and other.coefficient == self._coefficient)
+        elif isinstance(other, Monomial):
+            odegrees = other._degrees
+            return (odegrees == sdegrees and self._coefficient == 1)
+        elif isinstance(other, Polynomial):
+            return NotImplementedError
+        elif hasattr(other, "real") and hasattr(other, "imag"):
+            return (self.is_constant and self._coefficient == other)
+        else:
+            return False
+
+    def __add__(self, other):
+        """x.__add__(y) <==> x + y"""
+        cls = self.__class__
+
+        from naglib.core.symbols import Symbol
+
+        if isinstance(other, cls):
+            if self._degrees == other._degrees:
+                return cls(self._degrees, self._coefficient + other.coefficient)
+            else:
+                return Polynomial(summands=[self, other])
+
+        elif isinstance(other, Symbol):
+            other = Term({other:1}, 1)
+            return self + other
+        elif isinstance(other, Monomial):
+            degrees = other._degrees
+            coeff = 1
+            other = Term(degrees, coeff)
+            return self + other
+        elif isinstance(other, Polynomial):
+            raise NotImplementedError
+        elif hasattr(other, "real") and hasattr(other, "imag"):
+            other = Term({}, other)
+            return self + other
+        else:
+            msg = "unsupported operand type(s) for +: {0} and {1}".format(type(self), type(other))
+            raise TypeError(msg)
+
+    def __radd__(self, other):
+        """x.__radd__(y) <==> y + x"""
+        cls = self.__class__
+
+        from naglib.core.symbols import Symbol
+
+        if isinstance(other, cls):
+            if self._degrees == other._degrees:
+                return cls(self._degrees, other.coefficient + self._coefficient)
+            else:
+                return Polynomial(summands=[other, self])
+
+        elif isinstance(other, Symbol):
+            other = Term({other:1}, 1)
+            return other + self
+        elif isinstance(other, Monomial):
+            degrees = other._degrees
+            coeff = 1
+            other = Term(degrees, coeff)
+            return other + self
+        elif isinstance(other, Polynomial):
+            raise NotImplementedError
+        elif hasattr(other, "real") and hasattr(other, "imag"):
+            other = Term({}, other)
+            return other + self
+        else:
+            msg = "unsupported operand type(s) for +: {0} and {1}".format(type(other), type(self))
+            raise TypeError(msg)
+
+    def __sub__(self, other):
+        """x.__sub__(y) <==> x - y"""
+        cls = self.__class__
+
+        from naglib.core.symbols import Symbol
+
+        if isinstance(other, cls):
+            if self._degrees == other._degrees:
+                return cls(self._degrees, self._coefficient - other.coefficient)
+            else:
+                return Polynomial(summands=[self, -other])
+
+        elif isinstance(other, Symbol):
+            other = Term({other:1}, 1)
+            return self - other
+        elif isinstance(other, Monomial):
+            degrees = other._degrees
+            coeff = 1
+            other = Term(degrees, coeff)
+            return self - other
+        elif isinstance(other, Polynomial):
+            raise NotImplementedError
+        elif hasattr(other, "real") and hasattr(other, "imag"):
+            other = Term({}, other)
+            return self - other
+        else:
+            msg = "unsupported operand type(s) for -: {0} and {1}".format(type(self), type(other))
+            raise TypeError(msg)
+
+    def __rsub__(self, other):
+        """x.__rsub__(y) <==> y - x"""
+        cls = self.__class__
+
+        from naglib.core.symbols import Symbol
+
+        if isinstance(other, cls):
+            if self._degrees == other._degrees:
+                return cls(self._degrees, other.coefficient - self._coefficient)
+            else:
+                return Polynomial(summands=[self, -other])
+
+        elif isinstance(other, Symbol):
+            other = Term({other:1}, 1)
+            return other - self
+        elif isinstance(other, Monomial):
+            degrees = other._degrees
+            coeff = 1
+            other = Term(degrees, coeff)
+            return other - self
+        elif isinstance(other, Polynomial):
+            raise NotImplementedError
+        elif hasattr(other, "real") and hasattr(other, "imag"):
+            other = Term({}, other)
+            return other - self
+        else:
+            msg = "unsupported operand type(s) for -: {0} and {1}".format(type(other), type(self))
+            raise TypeError(msg)
+
+    def __mul__(self, other):
+        """x.__mul__(y) <==> x*y"""
+        cls = self.__class__
+
+        from naglib.core.symbols import Symbol
+
+        if isinstance(other, cls):
+            from collections import Counter
+            scoeff = self._coefficient
+            ocoeff = other.coefficient
+            sdegrees = Counter(self._degrees)
+            odegrees = Counter(other._degrees)
+            coeff = scoeff*ocoeff
+            degrees = dict(sdegrees + odegrees)
+
+            return cls(degrees, coeff)
+
+        elif isinstance(other, Symbol):
+            other = Term({other:1}, 1)
+            return self*other
+        elif isinstance(other, Monomial):
+            degrees = other._degrees
+            other = Term(degrees, 1)
+            return self*other
+        elif hasattr(other, "real") and hasattr(other, "imag"):
+            other = Term({}, other)
+            return self*other
+        elif isinstance(other, Polynomial):
+            raise NotImplementedError
+        else:
+            msg = "unsupported operand type(s) for *: {0} and {1}".format(type(self), type(other))
+            raise TypeError(msg)
+
+    def __rmul__(self, other):
+        """x.__rmul__(y) <==> y*x"""
+        cls = self.__class__
+
+        from naglib.core.symbols import Symbol
+
+        if isinstance(other, cls):
+            from collections import Counter
+            scoeff = self._coefficient
+            ocoeff = other.coefficient
+            sdegrees = Counter(self._degrees)
+            odegrees = Counter(other._degrees)
+            coeff = ocoeff*scoeff
+            degrees = dict(odegrees + sdegrees)
+
+            return cls(degrees, coeff)
+
+        elif isinstance(other, Symbol):
+            other = Term({other:1}, 1)
+            return other*self
+        elif isinstance(other, Monomial):
+            degrees = other._degrees
+            other = Term(degrees, 1)
+            return other*self
+        elif hasattr(other, "real") and hasattr(other, "imag"):
+            other = Term({}, other)
+            return other*self
+        elif isinstance(other, Polynomial):
+            raise NotImplementedError
+        else:
+            msg = "unsupported operand type(s) for *: {0} and {1}".format(type(other), type(self))
+            raise TypeError(msg)
+
+    def __pow__(self, other):
+        cls = self.__class__
+
+        coeff = self._coefficient
+        degrees = self._degrees
+
+        try:
+            degrees = dict([(v,degrees[v]*other) for v in degrees.keys()])
+            coeff = coeff**other
+        except TypeError:
+            msg = "invalid exponent"
+            raise TypeError(msg)
+
+        return cls(degrees, coeff)
+
+    def as_coeff_monomial(self):
+        """returns a tuple of the coefficient and monomial"""
+        coefficient = self._coefficient
+        monomial = Monomial(self._degrees)
+
+        return (coefficient, monomial)
+
+    def copy(self):
+        """returns a copy of self"""
+        cls = self.__class__
+        degrees = self._degrees.copy()
+        coefficient = self._coefficient
+        return cls(degrees, coefficient)
+
+    @property
+    def coefficient(self):
+        return self._coefficient
 
 class Polynomial(NAGObject):
     """Polynomial class"""
@@ -166,4 +512,23 @@ class Polynomial(NAGObject):
         super(Polynomial, self).__init__(*args, **kwargs)
         kkeys = kwargs.keys()
 
+        try:
+            from naglib.core.core import string_types
+            assert(type(args[0]) in string_types)
+        except IndexError:
+            if "summands" in kkeys:
+                self._summands = kwargs["summands"]
+        except AssertionError:
+            # check for Symbol, Monomial/Term
+            pass
+
         self._ground_type = SYMBOLS
+
+    def __repr__(self):
+        """x.__repr__() <==> repr(x)"""
+        return self.__str__()
+
+    def __str__(self):
+        """x.__str__() <==> str(x)"""
+        summands = self._summands
+        return " + ".join([str(s) for s in summands])

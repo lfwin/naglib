@@ -135,7 +135,9 @@ class Numeric(NAGObject):
 
         if imag == 0:
             return "{0}".format(real)
-        if imag < 0:
+        elif real == 0:
+            return "{1}*I".format(imag)
+        elif imag < 0:
             return "{0} - {1}*I".format(real, abs(imag))
         else:
             return "{0} + {1}*I".format(real, imag)
@@ -669,6 +671,8 @@ class Float(Numeric):
 
         if imag == 0:
             return "{1:.{0}f}".format(rdps,real)
+        elif real == 0:
+            return "{1:.{0}f}*I".format(idps,imag)
         elif imag < 0:
             return "{2:.{0}f} - {3:.{1}f}*I".format(rdps,idps,real,abs(imag))
         else:
@@ -1157,7 +1161,11 @@ class Rational(Numeric):
 
         if imag == 0:
             return "{0}".format(real)
-        if iden == 1 and imag < 0:
+        elif real == 0 and iden == 1:
+            return "{0}*I".format(imag)
+        elif real ==0:
+            return "{0}*I/{1}".format(inum, iden)
+        elif iden == 1 and imag < 0:
             return "{0} - {1}*I".format(real, abs(inum))
         elif iden == 1:
             return "{0} + {1}*I".format(real, inum)
