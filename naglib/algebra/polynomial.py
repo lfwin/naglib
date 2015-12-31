@@ -737,15 +737,107 @@ class Polynomial(NAGObject):
 
         try:
             from naglib.core.core import string_types
-            assert(type(args[0]) in string_types)
+            from naglib.core.symbols import Symbol
+            cls = self.__class__
+            arg = args[0]
+            if isinstance(arg, cls):
+                if hasattr(arg, "_summands"):
+                    self._summands = arg._summands
+                elif hasattr(arg, "_factors"):
+                    self._factors = arg._factors
+                elif hasattr(arg, "_base") and hasattr(arg, "_exp"):
+                    self._base = arg._base
+                    self._exp = arg._exp
+                else:
+                    msg = "malformed argument '{0}'".format(arg)
+                    raise ValueError(msg)
+
+                return
+            assert(type(arg) in string_types)
         except IndexError:
             if "summands" in kkeys:
                 self._summands = kwargs["summands"]
+            elif "factors" in kkeys:
+                self._factors = kwargs["factors"]
+            elif "base" in kkeys and "exp" in kkeys:
+                self._base = kwargs["base"]
+                self._exp = kwargs["exp"]
+            else: # nothing here; the zero polynomial
+                self._summands = []
         except AssertionError:
             # check for Symbol, Monomial/Term
-            pass
+            if hasattr(arg, "real") and hasattr(arg, "imag"):
+                self._summands = [Term({}, arg)]
+            elif isinstance(arg, Symbol):
+                self._summands = [Term({arg:1}, 1)]
+            elif isinstance(arg, Monomial):
+                self._summands = [Term(arg._degrees, 1)]
+            elif isinstance(arg, Term):
+                self._summands = [arg]
+            else:
+                msg = "don't know what to do with '{0}'".format(arg)
+                raise TypeError(msg)
 
+        if "combine" in kwargs and kwargs["combine"] == False:
+            combine = False
+        else:
+            combine = True
+        if combine and len(self._summands) > 1:
+            self.__combine_summands__()
+        self.__order_summands__()
         self._ground_type = SYMBOLS
+
+    def __combine_summands__(self):
+        """
+        combines summands by degree, so that, for example, constant terms
+        aren't represented twice
+        """
+        degree_coeffs = []
+        new_summands = []
+        skip = []
+
+        for s in self._summands:
+            if isinstance(s, Polynomial):
+                new_summands.append(s)
+            else:
+                degree_coeffs.append((s._degrees, s._coefficient))
+
+        for i in range(len(degree_coeffs)):
+            if i in skip:
+                continue
+            di,coeff = degree_coeffs[i]
+            for j in range(i+1, len(degree_coeffs)):
+                dj,cj = degree_coeffs[j]
+                if dj == di:
+                    coeff += cj
+                    skip.append(j)
+            if coeff != 0:
+                new_summands.append(Term(di, coeff))
+        self._summands = new_summands
+
+    def __order_summands__(self):
+        """
+        order summands according to grlex
+        """
+        summands = self._summands
+        total_degrees = [s.total_degree() for s in summands]
+        new_summands = []
+
+        remaining_indices = set(range(len(total_degrees)))
+        while remaining_indices:
+            max_degree = max(total_degrees)
+            max_indices = set()
+            for d in remaining_indices:
+                if total_degrees[d] == max_degree:
+                    total_degrees[d] = None
+                    max_indices.add(d)
+            for d in max_indices:
+                # TODO: sort these guys according to grlex
+                new_summands.append(summands[d])
+
+            remaining_indices.difference_update(max_indices)
+
+        self._summands = new_summands
 
     def __repr__(self):
         """x.__repr__() <==> repr(x)"""
@@ -753,5 +845,142 @@ class Polynomial(NAGObject):
 
     def __str__(self):
         """x.__str__() <==> str(x)"""
-        summands = self._summands
-        return " + ".join([str(s) for s in summands])
+        if hasattr(self, "_summands"):
+            summands = self._summands
+            if not summands: # zero polynomial
+                return '0'
+
+            strs = str(summands[0])
+            #print(strs)
+            for s in summands[1:]:
+                if isinstance(s, Term):
+                    c,m = s.as_coeff_monomial()
+                    if c < 0:
+                        strs += " - {0}*{1}".format(-c, m)
+                    else:
+                        strs += " + {0}".format(s)
+                else:
+                    strs += " + {0}".format(s)
+            return(strs)
+            #strs = [str(s) for s in summands]
+            # else:
+            #     return " + ".join(strs)
+        elif hasattr(self, "_factors"):
+            factors = self._factors
+            strf = ["({0})".format(f) for f in factors]
+            return "*".join(strf)
+        elif hasattr(self, "_base") and hasattr(self, "_exp"):
+            base = self._base
+            exp = self._exp
+            return "({0})**{1}".format(base, exp)
+        else:
+            return "dunno" # for testing
+
+    def __add__(self, other):
+        """x.__add__(y) <==> x + y"""
+        cls = self.__class__
+        try:
+            other = cls(other)
+        except TypeError:
+            raise
+
+        # summands for each have presumably already been combined; we need to
+        # implement a combine_summands for the pairs of _summands lists
+        if hasattr(self, "_summands"):
+            ssummands = self._summands
+        else:
+            ssummands = [self]
+        if hasattr(other, "_summands"):
+            osummands = other._summands
+        else:
+            osummands = [other]
+
+        new_summands = []
+        skipj = []
+        for i in range(len(ssummands)):
+            if isinstance(ssummands[i], Polynomial):
+                new_summands.append(ssummands[i])
+                continue
+            else:
+                di,coeff = ssummands[i]._degrees, ssummands[i]._coefficient
+                for j in range(len(osummands)):
+                    if j in skipj:
+                        continue
+                    if isinstance(osummands[j], Polynomial):
+                        new_summands.append(osummands[j])
+                        skipj.append(j)
+                    else:
+                        dj,cj = osummands[j]._degrees, osummands[j]._coefficient
+                        if dj == di:
+                            coeff += cj
+                            skipj.append(j)
+                if coeff != 0:
+                    new_summands.append(Term(di, coeff))
+
+        # all the osummands that remain after matches have been skipped
+        allj = set(range(len(osummands))).difference(set(skipj))
+        for j in allj:
+            new_summands.append(osummands[j])
+
+        return cls(summands=new_summands, combine=False)
+
+    def __radd__(self, other):
+        """x.__radd__(y) <==> y + x"""
+        cls = self.__class__
+        try:
+            other = cls(other)
+        except TypeError:
+            raise
+
+        # summands for each have presumably already been combined; we need to
+        # implement a combine_summands for the pairs of _summands lists
+        if hasattr(self, "_summands"):
+            ssummands = self._summands
+        else:
+            ssummands = [self]
+        if hasattr(other, "_summands"):
+            osummands = other._summands
+        else:
+            osummands = [other]
+
+        new_summands = []
+        skipj = []
+        for i in range(len(ssummands)):
+            if isinstance(ssummands[i], Polynomial):
+                new_summands.append(ssummands[i])
+                continue
+            else:
+                di,coeff = ssummands[i]._degrees, ssummands[i]._coefficient
+                for j in range(len(osummands)):
+                    if j in skipj:
+                        continue
+                    if isinstance(osummands[j], Polynomial):
+                        new_summands.append(osummands[j])
+                        skipj.append(j)
+                    else:
+                        dj,cj = osummands[j]._degrees, osummands[j]._coefficient
+                        if dj == di:
+                            coeff += cj
+                            skipj.append(j)
+                if coeff != 0:
+                    new_summands.append(Term(di, coeff))
+
+        # all the osummands that remain after matches have been skipped
+        allj = set(range(len(osummands))).difference(set(skipj))
+        for j in allj:
+            new_summands.append(osummands[j])
+
+        return cls(summands=new_summands, combine=False)
+
+    def total_degree(self):
+        if hasattr(self, "_summands"):
+            summands = self._summands
+            return max([s.total_degree() for s in summands])
+        elif hasattr(self, "_factors"):
+            factors = self._factors
+            return sum([f.total_degree() for f in factors])
+        elif hasattr(self, "_base") and hasattr(self, "_exp"):
+            base, exponent = self._base, self._exp
+            return base.total_degree()*exponent
+        else:
+            raise NotImplementedError("wut")
