@@ -86,7 +86,7 @@ class Monomial(NAGObject):
             odegrees = other._degrees
             return odegrees == sdegrees
         elif isinstance(other, Polynomial):
-            return NotImplementedError
+            raise NotImplementedError
         else:
             return False
 
@@ -348,6 +348,22 @@ class Term(Monomial):
         self._is_scalar = True
 
         self._ground_type = SYMBOLS
+        self._coeff_type = type(self._coefficient)
+
+    def __coerce_type__(self, totype):
+        """
+        coerce the coefficient of self to totype
+        """
+        c,m = self.as_coeff_monomial()
+        print(totype)
+        print(c, type(c))
+        try:
+            c = totype(c)
+        except:
+            raise # who knows
+
+        print(c, type(c))
+        return c*m
 
     def __repr__(self):
         """x.__repr__() <==> repr(x)"""
@@ -393,7 +409,7 @@ class Term(Monomial):
             odegrees = other._degrees
             return (odegrees == sdegrees and self._coefficient == 1)
         elif isinstance(other, Polynomial):
-            return NotImplementedError
+            raise NotImplementedError
         elif hasattr(other, "real") and hasattr(other, "imag"):
             return (self.is_constant and self._coefficient == other)
         else:
@@ -765,7 +781,7 @@ class Polynomial(NAGObject):
             else: # nothing here; the zero polynomial
                 self._summands = []
         except AssertionError:
-            # check for Symbol, Monomial/Term
+            # check for numeric types, Symbols, Monomials/Terms...
             if hasattr(arg, "real") and hasattr(arg, "imag"):
                 self._summands = [Term({}, arg)]
             elif isinstance(arg, Symbol):
@@ -778,14 +794,62 @@ class Polynomial(NAGObject):
                 msg = "don't know what to do with '{0}'".format(arg)
                 raise TypeError(msg)
 
-        if "combine" in kwargs and kwargs["combine"] == False:
-            combine = False
-        else:
-            combine = True
-        if combine and len(self._summands) > 1:
-            self.__combine_summands__()
-        self.__order_summands__()
+        if hasattr(self, "_summands"):
+            if "combine" in kwargs and kwargs["combine"] == False:
+                pass
+            else: # default behavior is to combine
+                self.__combine_summands__()
+
+            self.__order_summands__()
+
         self._ground_type = SYMBOLS
+        self._coeff_type = self.__coerce_type__()
+
+    def __coerce_type__(self, totype=None):
+        """
+        determine a common coefficient type for all summands/factors
+        """
+        from fractions import gcd
+        from naglib.core.numbers import Float, Rational, Integer
+
+        pmap = {Float:1,
+                Rational:2,
+                Integer:4}
+        pinv = dict([(pmap[k], k) for k in pmap.keys()])
+
+        cls = self.__class__
+        if hasattr(self, "_summands"):
+            summands = self._summands
+            if totype is None: # "intelligently" determine a common coeff type
+                from functools import reduce
+                all_types = [s.coefficient.__class__ for s in summands if isinstance(s, Term)]
+                if len(all_types) == 1:
+                    totype = pinv[pmap[all_types[0]]]
+                else:
+                    totype = pinv[reduce(lambda x,y: gcd(x,y), all_coeffs)]
+            try:
+                new_summands = [s.__coerce_type__(totype) for s in summands]
+                self._summands = new_summands
+            except:
+                raise
+
+        elif hasattr(self, "_factors"):
+            factors = self._factors
+            if totype is None: # "intelligently" determine a common coeff type
+                from functools import reduce
+                all_coeffs = [f.coefficient for f in factors if isinstance(f, Term)]
+                if len(all_coeffs) == 1:
+                    totype = type(all_coeffs[0])
+                else:
+                    totype = reduce(lambda x,y: x.__coerce__(y), all_coeffs)
+            try:
+                new_factors = [f.__coerce_type__(totype) for f in factors]
+                self._factors = new_factors
+            except:
+                raise
+
+        else:
+            pass
 
     def __combine_summands__(self):
         """
@@ -814,6 +878,22 @@ class Polynomial(NAGObject):
             if coeff != 0:
                 new_summands.append(Term(di, coeff))
         self._summands = new_summands
+
+    def __grlex__(self, monomials):
+        """
+        assumes a list of monomials of the same total degree, sorts by grlex
+        """
+        remaining_monomials = monomials
+        sorted_monomials = []
+        all_syms = set(sum([m.keys() for m in monomials], start=[]))
+        as_strings = dict([(str(sym), sym) for sym in all_syms])
+        in_order = sorted(as_strings.keys())
+
+        for sym in in_order:
+            have_max = False
+            has_sym = [m for m in remaining_monomials if as_strings[sym] in m.keys()]
+            if len(has_sym) == 1:
+                pass
 
     def __order_summands__(self):
         """
@@ -851,20 +931,31 @@ class Polynomial(NAGObject):
                 return '0'
 
             strs = str(summands[0])
-            #print(strs)
             for s in summands[1:]:
                 if isinstance(s, Term):
                     c,m = s.as_coeff_monomial()
-                    if c < 0:
+                    # first handle constant cases, where c matters more than m
+                    if s.is_constant and c < 0:
+                        strs += " - {0}".format(c)
+                    elif s.is_constant:
+                        strs += " + {0}".format(c)
+                    # now handle nonconstant terms where the coefficient (\pm 1)
+                    # isn't explicitly shown
+                    elif c == -1:
+                        strs += " - {0}".format(m)
+                    elif c == 1:
+                        strs += " + {0}".format(m)
+                    # everything else (non-constant terms with non-unit coeffs)
+                    elif c < 0:
                         strs += " - {0}*{1}".format(-c, m)
                     else:
                         strs += " + {0}".format(s)
+                # not a Term, probably a Polynomial with _factors or a
+                # Polynomial raised to a power
                 else:
                     strs += " + {0}".format(s)
             return(strs)
-            #strs = [str(s) for s in summands]
-            # else:
-            #     return " + ".join(strs)
+
         elif hasattr(self, "_factors"):
             factors = self._factors
             strf = ["({0})".format(f) for f in factors]
@@ -875,6 +966,22 @@ class Polynomial(NAGObject):
             return "({0})**{1}".format(base, exp)
         else:
             return "dunno" # for testing
+
+    def __neg__(self):
+        """x.__neg__() <==> -x"""
+        cls = self.__class__
+
+        if hasattr(self, "_summands"):
+            summands = self._summands
+            new_summands = [-s for s in summands]
+            return cls(summands=new_summands, combine=False)
+        elif hasattr(self, "_factors"):
+            factors = self._factors
+            new_factors = [-1] + factors
+            return cls(factors=new_factors)
+        else:
+            new_factors = [-1, self]
+            return cls(factors=new_factors)
 
     def __add__(self, other):
         """x.__add__(y) <==> x + y"""
@@ -971,6 +1078,65 @@ class Polynomial(NAGObject):
             new_summands.append(osummands[j])
 
         return cls(summands=new_summands, combine=False)
+
+    def __sub__(self, other):
+        """x.__sub__(y) <==> x - y"""
+        cls = self.__class__
+        try:
+            other = cls(other)
+        except TypeError:
+            raise
+
+        # summands for each have presumably already been combined; we need to
+        # implement a combine_summands for the pairs of _summands lists
+        if hasattr(self, "_summands"):
+            ssummands = self._summands
+        else:
+            ssummands = [self]
+        if hasattr(other, "_summands"):
+            osummands = (-other)._summands
+        else:
+            osummands = [-other]
+
+        new_summands = []
+        skipj = []
+        for i in range(len(ssummands)):
+            if isinstance(ssummands[i], Polynomial):
+                new_summands.append(ssummands[i])
+                continue
+            else:
+                di,coeff = ssummands[i]._degrees, ssummands[i]._coefficient
+                for j in range(len(osummands)):
+                    if j in skipj:
+                        continue
+                    if isinstance(osummands[j], Polynomial):
+                        new_summands.append(osummands[j])
+                        skipj.append(j)
+                    else:
+                        dj,cj = osummands[j]._degrees, osummands[j]._coefficient
+                        if dj == di:
+                            coeff += cj
+                            skipj.append(j)
+                if coeff != 0:
+                    new_summands.append(Term(di, coeff))
+
+        # all the osummands that remain after matches have been skipped
+        allj = set(range(len(osummands))).difference(set(skipj))
+        for j in allj:
+            new_summands.append(osummands[j])
+
+        return cls(summands=new_summands, combine=False)
+
+    def is_constant(self):
+        if hasattr(self, "_summands"):
+            summands = self._summands
+            return len(summands) == 1 and summands[0].is_constant()
+        elif hasattr(self, "_factors"):
+            factors = self._factors
+            return all([f.is_constant() for f in factors])
+        else:
+            base, exponent = self._base, self._exp
+            return base.is_constant() or exponent == 0
 
     def total_degree(self):
         if hasattr(self, "_summands"):

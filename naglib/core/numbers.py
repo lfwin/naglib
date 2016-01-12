@@ -232,8 +232,11 @@ class Numeric(NAGObject):
         try:
             cls = self.__coerce__(other)
         except TypeError:
-            msg = "unsupported operand type(s) for +: '{0}' and '{1}'".format(type(self), type(other))
-            raise TypeError(msg)
+            if hasattr(other, "__radd__"):
+                return NotImplemented
+            else:
+                msg = "unsupported operand type(s) for +: '{0}' and '{1}'".format(type(self), type(other))
+                raise TypeError(msg)
 
         sreal = self._real
         oreal = other.real
@@ -282,8 +285,11 @@ class Numeric(NAGObject):
         try:
             cls = self.__coerce__(other)
         except TypeError:
-            msg = "unsupported operand type(s) for -: '{0}' and '{1}'".format(type(self), type(other))
-            raise TypeError(msg)
+            if hasattr(other, "__rsub__"):
+                return NotImplemented
+            else:
+                msg = "unsupported operand type(s) for -: '{0}' and '{1}'".format(type(self), type(other))
+                raise TypeError(msg)
 
         sreal = self._real
         oreal = other.real
@@ -332,8 +338,11 @@ class Numeric(NAGObject):
         try:
             cls = self.__coerce__(other)
         except TypeError:
-            msg = "unsupported operand type(s) for *: '{0}' and '{1}'".format(type(self), type(other))
-            raise TypeError(msg)
+            if hasattr(other, "__rmul__"):
+                return NotImplemented
+            else:
+                msg = "unsupported operand type(s) for *: '{0}' and '{1}'".format(type(self), type(other))
+                raise TypeError(msg)
 
         sreal = self._real
         oreal = other.real
@@ -382,8 +391,11 @@ class Numeric(NAGObject):
         try:
             cls = self.__coerce__(other, div=True)
         except TypeError:
-            msg = "unsupported operand type(s) for /: '{0}' and '{1}'".format(type(self), type(other))
-            raise TypeError(msg)
+            if hasattr(other, "__rdiv__"):
+                return NotImplemented
+            else:
+                msg = "unsupported operand type(s) for /: '{0}' and '{1}'".format(type(self), type(other))
+                raise TypeError(msg)
 
         s_as_type = cls(self)
         o_as_type = cls(other)
@@ -450,8 +462,11 @@ class Numeric(NAGObject):
         try:
             cls = self.__coerce__(other, try_float=True)
         except TypeError:
-            msg = "unsupported operand type(s) for **: '{0}' and '{1}'".format(type(self), type(other))
-            raise TypeError(msg)
+            if hasattr(other, "__rpow__"):
+                return NotImplemented
+            else:
+                msg = "unsupported operand type(s) for **: '{0}' and '{1}'".format(type(self), type(other))
+                raise TypeError(msg)
 
         if other == 1:
             return self.__copy__()
@@ -707,8 +722,11 @@ class Float(Numeric):
         try:
             cls = self.__coerce__(other)
         except TypeError:
-            msg = "unsupported operand type(s) for +: '{0}' and '{1}'".format(type(self), type(other))
-            raise TypeError(msg)
+            if hasattr(other, "__radd__"):
+                return NotImplemented
+            else:
+                msg = "unsupported operand type(s) for +: '{0}' and '{1}'".format(type(self), type(other))
+                raise TypeError(msg)
 
         if isinstance(other, Numeric) and hasattr(other, "prec"): # Float or derived
             prec = min(self._prec, other.prec)
@@ -799,8 +817,11 @@ class Float(Numeric):
         try:
             cls = self.__coerce__(other)
         except TypeError:
-            msg = "unsupported operand type(s) for -: '{0}' and '{1}'".format(type(self), type(other))
-            raise TypeError(msg)
+            if hasattr(other, "__rsub__"):
+                return NotImplemented
+            else:
+                msg = "unsupported operand type(s) for -: '{0}' and '{1}'".format(type(self), type(other))
+                raise TypeError(msg)
 
         if isinstance(other, Numeric) and hasattr(other, "prec"): # Float or derived
             prec = min(self._prec, other.prec)
@@ -891,8 +912,11 @@ class Float(Numeric):
         try:
             cls = self.__coerce__(other)
         except TypeError:
-            msg = "unsupported operand type(s) for *: '{0}' and '{1}'".format(type(self), type(other))
-            raise TypeError(msg)
+            if hasattr(other, "__rmul__"):
+                return NotImplemented
+            else:
+                msg = "unsupported operand type(s) for *: '{0}' and '{1}'".format(type(self), type(other))
+                raise TypeError(msg)
 
         if isinstance(other, Numeric) and hasattr(other, "prec"): # Float or derived
             prec = min(self._prec, other.prec)
@@ -983,8 +1007,11 @@ class Float(Numeric):
         try:
             cls = self.__coerce__(other, div=True)
         except TypeError:
-            msg = "unsupported operand type(s) for /: '{0}' and '{1}'".format(type(self), type(other))
-            raise TypeError(msg)
+            if hasattr(other, "__rdiv__"):
+                return NotImplemented
+            else:
+                msg = "unsupported operand type(s) for /: '{0}' and '{1}'".format(type(self), type(other))
+                raise TypeError(msg)
 
         if isinstance(other, Numeric) and hasattr(other, "prec"): # Float or derived
             prec = min(self._prec, other.prec)
