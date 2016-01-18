@@ -69,22 +69,32 @@ def init_rational(val):
 def init_integer(val):
     val = str(val)
     if NUMBERS == "gmpy2":
-        from gmpy2 import mpz
+        from gmpy2 import mpz, mpq
         try:
             val = mpz(val)
-        except ValueError: # invalid digits
-            raise
+        except ValueError as e: # invalid digits
+            try:
+                val = mpz(mpq(val))
+            except: # anything at all
+                raise e
     elif NUMBERS == "sympy":
-        from sympy import Integer
+        from sympy import Integer, Rational
         try:
             val = Integer(val)
-        except TypeError: # invalid number
-            raise ValueError
+        except TypeError as e: # invalid number
+            try:
+                val = Integer(Rational(val))
+            except: # anything at all
+                raise e
     else:
+        from fractions import Fraction
         try:
             val = long(val)
-        except ValueError:
-            raise
+        except ValueError as e:
+            try:
+                val = Fraction(val)
+            except:
+                raise e
 
     return val
 

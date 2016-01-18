@@ -355,15 +355,12 @@ class Term(Monomial):
         coerce the coefficient of self to totype
         """
         c,m = self.as_coeff_monomial()
-        print(totype)
-        print(c, type(c))
         try:
             c = totype(c)
         except:
             raise # who knows
 
-        print(c, type(c))
-        return c*m
+        self._coefficient = c
 
     def __repr__(self):
         """x.__repr__() <==> repr(x)"""
@@ -805,6 +802,8 @@ class Polynomial(NAGObject):
         self._ground_type = SYMBOLS
         self._coeff_type = self.__coerce_type__()
 
+    ##### BEGIN SPECIAL (HIDDEN) FUNCTIONS #####
+
     def __coerce_type__(self, totype=None):
         """
         determine a common coefficient type for all summands/factors
@@ -823,12 +822,17 @@ class Polynomial(NAGObject):
             if totype is None: # "intelligently" determine a common coeff type
                 from functools import reduce
                 all_types = [s.coefficient.__class__ for s in summands if isinstance(s, Term)]
-                if len(all_types) == 1:
+                all_types += [s._coeff_type for s in summands if not isinstance(s, Term)]
+                if len(all_types) == 0: # zero polynomial
+                    totype = Integer
+                elif len(all_types) == 1:
                     totype = pinv[pmap[all_types[0]]]
                 else:
-                    totype = pinv[reduce(lambda x,y: gcd(x,y), all_coeffs)]
+                    totype = pinv[reduce(lambda x,y: gcd(x,y), [pmap[t] for t in all_types])]
             try:
-                new_summands = [s.__coerce_type__(totype) for s in summands]
+                new_summands = [s.copy() for s in summands]
+                for s in new_summands:
+                    s.__coerce_type__(totype)
                 self._summands = new_summands
             except:
                 raise
@@ -837,19 +841,26 @@ class Polynomial(NAGObject):
             factors = self._factors
             if totype is None: # "intelligently" determine a common coeff type
                 from functools import reduce
-                all_coeffs = [f.coefficient for f in factors if isinstance(f, Term)]
-                if len(all_coeffs) == 1:
-                    totype = type(all_coeffs[0])
+                all_types = [f.coefficient.__class__ for f in factors if isinstance(f, Term)]
+                all_types += [f._coeff_type for f in factors if not isinstance(f, Term)]
+                if len(all_types) == 0: # zero polynomial
+                    totype = Integer
+                elif len(all_types) == 1:
+                    totype = pinv[pmap[all_types[0]]]
                 else:
-                    totype = reduce(lambda x,y: x.__coerce__(y), all_coeffs)
+                    totype = pinv[reduce(lambda x,y: gcd(x,y), [pmap[t] for t in all_types])]
             try:
-                new_factors = [f.__coerce_type__(totype) for f in factors]
+                new_factors = [f.copy() for f in factors]
+                for f in new_factors:
+                    f.__coerce_type__(totype)
                 self._factors = new_factors
             except:
                 raise
+        else: # base/exp pair
+            base = self._base
+            totype = base._coeff_type
 
-        else:
-            pass
+        return totype
 
     def __combine_summands__(self):
         """
@@ -919,6 +930,8 @@ class Polynomial(NAGObject):
 
         self._summands = new_summands
 
+    ##### BEGIN STANDARD (HIDDEN) FUNCTIONS #####
+
     def __repr__(self):
         """x.__repr__() <==> repr(x)"""
         return self.__str__()
@@ -936,7 +949,7 @@ class Polynomial(NAGObject):
                     c,m = s.as_coeff_monomial()
                     # first handle constant cases, where c matters more than m
                     if s.is_constant and c < 0:
-                        strs += " - {0}".format(c)
+                        strs += " - {0}".format(-c)
                     elif s.is_constant:
                         strs += " + {0}".format(c)
                     # now handle nonconstant terms where the coefficient (\pm 1)
@@ -958,8 +971,31 @@ class Polynomial(NAGObject):
 
         elif hasattr(self, "_factors"):
             factors = self._factors
-            strf = ["({0})".format(f) for f in factors]
-            return "*".join(strf)
+            if not factors: # zero polynomial again
+                return '0'
+
+            degrees = [f.total_degree() for f in factors]
+            if 0 in degrees: # a scalar factor
+                index = degrees.index(0)
+                constant_term = factors[index]
+                factors = factors[:index] + factors[index+1:]
+
+                if isinstance(constant_term, Monomial):
+                    c = constant_term.coefficient
+                else:
+                    c = constant_term._summands[0].coefficient
+
+                strf = '*'.join(["({0})".format(f) for f in factors])
+                if c == -1:
+                    strf = '-' + strf
+                elif c.imag == 0:
+                    strf = "{0}*".format(c) + strf
+                else:
+                    strf = "({0})*".format(c) + strf
+            else:
+                strf = '*'.join(["({0})".format(f) for f in factors])
+
+            return strf
         elif hasattr(self, "_base") and hasattr(self, "_exp"):
             base = self._base
             exp = self._exp
@@ -971,16 +1007,18 @@ class Polynomial(NAGObject):
         """x.__neg__() <==> -x"""
         cls = self.__class__
 
+        minus_one = Term({}, -1)
+
         if hasattr(self, "_summands"):
             summands = self._summands
             new_summands = [-s for s in summands]
             return cls(summands=new_summands, combine=False)
         elif hasattr(self, "_factors"):
             factors = self._factors
-            new_factors = [-1] + factors
+            new_factors = [minus_one] + factors
             return cls(factors=new_factors)
         else:
-            new_factors = [-1, self]
+            new_factors = [minus_one, self]
             return cls(factors=new_factors)
 
     def __add__(self, other):
@@ -1127,16 +1165,257 @@ class Polynomial(NAGObject):
 
         return cls(summands=new_summands, combine=False)
 
-    def is_constant(self):
+    def __rsub__(self, other):
+        """x.__rsub__(y) <==> y - x"""
+        cls = self.__class__
+        try:
+            other = cls(other)
+        except TypeError:
+            raise
+
+        # summands for each have presumably already been combined; we need to
+        # implement a combine_summands for the pairs of _summands lists
         if hasattr(self, "_summands"):
-            summands = self._summands
-            return len(summands) == 1 and summands[0].is_constant()
-        elif hasattr(self, "_factors"):
-            factors = self._factors
-            return all([f.is_constant() for f in factors])
+            ssummands = (-self)._summands
         else:
-            base, exponent = self._base, self._exp
-            return base.is_constant() or exponent == 0
+            ssummands = [-self]
+        if hasattr(other, "_summands"):
+            osummands = other._summands
+        else:
+            osummands = [other]
+
+        new_summands = []
+        skipj = []
+        for i in range(len(osummands)):
+            if isinstance(osummands[i], Polynomial):
+                new_summands.append(osummands[i])
+                continue
+            else:
+                di,coeff = osummands[i]._degrees, osummands[i]._coefficient
+                for j in range(len(ssummands)):
+                    if j in skipj:
+                        continue
+                    if isinstance(ssummands[j], Polynomial):
+                        new_summands.append(ssummands[j])
+                        skipj.append(j)
+                    else:
+                        dj,cj = ssummands[j]._degrees, ssummands[j]._coefficient
+                        if dj == di:
+                            coeff += cj
+                            skipj.append(j)
+                if coeff != 0:
+                    new_summands.append(Term(di, coeff))
+
+        # all the ssummands that remain after matches have been skipped
+        allj = set(range(len(ssummands  ))).difference(set(skipj))
+        for j in allj:
+            new_summands.append(ssummands[j])
+
+        return cls(summands=new_summands, combine=False)
+
+    def __mul__(self, other):
+        """x.__mul__(y) <==> x*y"""
+        cls = self.__class__
+
+        if isinstance(other, cls) and other.is_constant:
+            other = other._summands[0].coefficient
+
+        # multiply by a constant
+        if hasattr(other, "real") and hasattr(other, "imag"):
+            if other == 1:
+                return self.copy()
+
+            other = Term({}, other)
+            if hasattr(self, "_summands"): # distribute
+                new_summands = [other*s for s in self._summands]
+                return cls(summands=new_summands)
+            elif hasattr(self, "_factors"):
+                new_factors = [f.copy() for f in self._factors]
+                degrees = [f.total_degree() for f in new_factors]
+                if 0 in degrees:
+                    index = degrees.index(0)
+                    new_factors[index] = other*new_factors[index]
+                else:
+                    new_factors = [other] + new_factors
+                return cls(factors=new_factors)
+            else:
+                new_factors = [other, self.copy()]
+                return cls(factors=new_factors)
+        # multiply by a Monomial or Term
+        elif isinstance(other, Monomial):
+            if hasattr(self, "_factors"):
+                new_factors = [f.copy() for f in self._factors] + [other.copy()]
+            else:
+                new_factors = [self.copy(), other.copy()]
+            return cls(factors=new_factors)
+        # multiply by another Polynomial
+        elif isinstance(other, cls):
+            if hasattr(self, "_factors") and hasattr(other, "_factors"):
+                new_factors = [f.copy() for f in self._factors + other._factors]
+            elif hasattr(self, "_factors"):
+                new_factors = [f.copy() for f in self._factors] + [other.copy()]
+            elif hasattr(other, "_factors"):
+                new_factors = [self.copy()] + [f.copy() for f in other._factors]
+            else:
+                new_factors = [self.copy(), other.copy()]
+            return cls(factors=new_factors)
+        else:
+            msg = "unsupported operand type(s) for *: {0} and {1}".format(type(self), type(other))
+            raise TypeError(msg)
+
+    def __rmul__(self, other):
+        """x.__rmul__(y) <==> y*x"""
+        cls = self.__class__
+
+        if isinstance(other, cls) and other.is_constant:
+            other = other._summands[0].coefficient
+
+        # multiply by a constant
+        if hasattr(other, "real") and hasattr(other, "imag"):
+            if other == 1:
+                return self.copy()
+
+            other = Term({}, other)
+            if hasattr(self, "_summands"): # distribute
+                new_summands = [other*s for s in self._summands]
+                return cls(summands=new_summands)
+            elif hasattr(self, "_factors"):
+                new_factors = [f.copy() for f in self._factors]
+                degrees = [f.total_degree() for f in new_factors]
+                if 0 in degrees:
+                    index = degrees.index(0)
+                    new_factors[index] = other*new_factors[index]
+                else:
+                    new_factors = [other] + new_factors
+                return cls(factors=new_factors)
+            else:
+                new_factors = [other, self.copy()]
+                return cls(factors=new_factors)
+        # multiply by a Monomial or Term
+        elif isinstance(other, Monomial):
+            if hasattr(self, "_factors"):
+                new_factors =  [other.copy()] + [f.copy() for f in self._factors]
+            else:
+                new_factors = [other.copy(), self.copy()]
+            return cls(factors=new_factors)
+        # multiply by another Polynomial
+        elif isinstance(other, cls):
+            if hasattr(self, "_factors") and hasattr(other, "_factors"):
+                new_factors = [f.copy() for f in other._factors + self._factors]
+            elif hasattr(self, "_factors"):
+                new_factors = [other.copy()] + [f.copy() for f in self._factors]
+            elif hasattr(other, "_factors"):
+                new_factors = [f.copy() for f in other._factors] + [self.copy()]
+            else:
+                new_factors = [other.copy(), self.copy()]
+            return cls(factors=new_factors)
+        else:
+            msg = "unsupported operand type(s) for *: {0} and {1}".format(type(other), type(self))
+            raise TypeError(msg)
+
+    def __div__(self, other):
+        """x.__div__(y) <==> x/y"""
+        cls = self.__class__
+
+        # multiply by a constant
+        if hasattr(other, "real") and hasattr(other, "imag"):
+            if other == 1:
+                return self.copy()
+            elif other == 0:
+                msg = "division by zero"
+                raise ZeroDivisionError(msg)
+
+            other = Term({}, 1/other)
+            if hasattr(self, "_summands"): # distribute
+                new_summands = [other*s for s in self._summands]
+                return cls(summands=new_summands)
+            elif hasattr(self, "_factors"):
+                new_factors = [f.copy() for f in self._factors]
+                degrees = [f.total_degree() for f in new_factors]
+                if 0 in degrees:
+                    index = degrees.index(0)
+                    new_factors[index] = other*new_factors[index]
+                else:
+                    new_factors = [other] + new_factors
+                return cls(factors=new_factors)
+            else:
+                new_factors = [other, self.copy()]
+                return cls(factors=new_factors)
+        # multiply by a Monomial or Term
+        elif isinstance(other, Monomial):
+            other = other**(-1)
+            if hasattr(self, "_factors"):
+                new_factors = [f.copy() for f in self._factors] + [other.copy()]
+            else:
+                new_factors = [self.copy(), other]
+            return cls(factors=new_factors)
+        # multiply by another Polynomial
+        elif isinstance(other, cls):
+            other = other**(-1)
+            if hasattr(self, "_factors"):
+                new_factors = [f.copy() for f in self._factors] + [other]
+            else:
+                new_factors = [self.copy(), other]
+            return cls(factors=new_factors)
+        else:
+            msg = "unsupported operand type(s) for /: {0} and {1}".format(type(self), type(other))
+            raise TypeError(msg)
+
+    def __rdiv__(self, other):
+        """x.__rdiv__(y) <==> y/x"""
+        cls = self.__class__
+
+        if self == 1:
+            return other.copy()
+        elif self == 0:
+            msg = "division by zero"
+            raise ZeroDivisionError(msg)
+
+        self_inv = self**(-1)
+
+        # multiply by a constant
+        if hasattr(other, "real") and hasattr(other, "imag"):
+            other = Term({}, other)
+            new_factors = [other, self_inv]
+            return cls(factors=new_factors)
+        # multiply by a Monomial or Term
+        elif isinstance(other, Monomial):
+            new_factors = [other, self_inv]
+            return cls(factors=new_factors)
+        # multiply by another Polynomial
+        elif isinstance(other, cls):
+            if hasattr(other, "_factors"):
+                new_factors = [f.copy() for f in other._factors] + [self_inv]
+            else:
+                new_factors = [other.copy(), self_inv]
+            return cls(factors=new_factors)
+        else:
+            msg = "unsupported operand type(s) for /: {0} and {1}".format(type(other), type(self))
+            raise TypeError(msg)
+
+    def __truediv__(self, other):
+        return self.__div__(other)
+
+    def __rtruediv__(self, other):
+        return self.__rdiv__(other)
+
+    def __pow__(self, other):
+        """x.__pow__(y) <==> x**y"""
+
+
+    def copy(self):
+        cls = self.__class__
+
+        if hasattr(self, "_summands"):
+            summands = [s.copy() for s in self._summands]
+            return cls(summands=summands)
+        elif hasattr(self, "_factors"):
+            factors = [f.copy() for f in self._factors]
+            return cls(factors=factors)
+        else:
+            base = self._base.copy()
+            exponent = self._exp
+            return cls(base=base, exp=exponent)
 
     def total_degree(self):
         if hasattr(self, "_summands"):
@@ -1150,3 +1429,15 @@ class Polynomial(NAGObject):
             return base.total_degree()*exponent
         else:
             raise NotImplementedError("wut")
+
+    @property
+    def is_constant(self):
+        if hasattr(self, "_summands"):
+            summands = self._summands
+            return len(summands) == 1 and summands[0].is_constant
+        elif hasattr(self, "_factors"):
+            factors = self._factors
+            return all([f.is_constant for f in factors])
+        else:
+            base, exponent = self._base, self._exp
+            return base.is_constant or exponent == 0
